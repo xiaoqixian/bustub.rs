@@ -32,15 +32,12 @@ use crate::storage::page::page_guard::{ReadPageGuard, WritePageGuard};
 /// behaves as a cache, keeping frequently used pages in memory for faster
 /// access, and evicting unused or cold pages back out to storage.
 #[allow(dead_code)]
-pub struct BufferPoolManager<D: DiskManager + 'static> {
+struct BufferPoolManagerCore {
     /// The number of frames in the buffer pool.
     num_frames: usize,
 
     /// The next page ID to be allocated.
     next_page_id: AtomicI32,
-
-    /// The latch protecting the buffer pool's inner data structures.
-    bpm_latch: Arc<Mutex<()>>,
 
     /// The frame headers of the frames that this buffer pool manages.
     frames: Vec<Arc<FrameHeader>>,
@@ -53,57 +50,55 @@ pub struct BufferPoolManager<D: DiskManager + 'static> {
     free_frames: VecDeque<FrameId>,
 
     /// The replacer to find unpinned / candidate pages for eviction.
-    replacer: Arc<Mutex<LRUKReplacer>>,
+    replacer: LRUKReplacer,
 
     /// The disk scheduler.
-    disk_scheduler: DiskScheduler<D>,
+    disk_scheduler: DiskScheduler,
 }
 
-impl<D: DiskManager + 'static> BufferPoolManager<D> {
+
+pub struct BufferPoolManager {
+    core: Arc<Mutex<BufferPoolManagerCore>>
+}
+
+impl BufferPoolManager {
     /// Creates a new `BufferPoolManager`.
     ///
     /// * `num_frames` - the size of the buffer pool.
     /// * `disk_manager` - the disk manager.
     /// * `k_dist` - the backward k-distance for the LRU-K replacer.
-    pub fn new(num_frames: usize, disk_manager: D, k_dist: usize) -> Self {
-        let bpm_latch = Arc::new(Mutex::new(()));
-        let replacer = Arc::new(Mutex::new(LRUKReplacer::new(num_frames, k_dist)));
+    pub fn new(num_frames: usize, disk_manager: Arc<dyn DiskManager>, k_dist: usize) -> Self {
+        let replacer = LRUKReplacer::new(num_frames, k_dist);
         let disk_scheduler = DiskScheduler::new(disk_manager);
 
         let mut frames = Vec::with_capacity(num_frames);
         let mut free_frames = VecDeque::with_capacity(num_frames);
 
-        {
-            let _latch = bpm_latch.lock().unwrap();
-
-            // Allocate all in-memory frames up front and initialize the free
-            // frame list with all possible frame IDs.
-            for i in 0..num_frames {
-                frames.push(Arc::new(FrameHeader::new(i as FrameId)));
-                free_frames.push_back(i as FrameId);
-            }
+        // Allocate all in-memory frames up front and initialize the free
+        // frame list with all possible frame IDs.
+        for i in 0..num_frames {
+            frames.push(Arc::new(FrameHeader::new(i as FrameId)));
+            free_frames.push_back(i as FrameId);
         }
 
         BufferPoolManager {
-            num_frames,
-            next_page_id: AtomicI32::new(0),
-            bpm_latch,
-            frames,
-            page_table: HashMap::with_capacity(num_frames),
-            free_frames,
-            replacer,
-            disk_scheduler,
+            core: Arc::new(Mutex::new(BufferPoolManagerCore {
+                num_frames,
+                next_page_id: AtomicI32::new(0),
+                frames,
+                page_table: HashMap::with_capacity(num_frames),
+                free_frames,
+                replacer,
+                disk_scheduler,
+            }))
         }
     }
 
     /// Returns the number of frames that this buffer pool manages.
     pub fn size(&self) -> usize {
-        self.num_frames
-    }
-
-    /// Returns a reference to the inner `DiskScheduler`.
-    pub fn disk_scheduler(&self) -> &DiskScheduler<D> {
-        &self.disk_scheduler
+        let guard = self.core.lock()
+            .expect("Unexpected error of mutex locking");
+        guard.num_frames
     }
 
     /// Allocates a new page on disk.
@@ -259,9 +254,8 @@ mod buffer_pool_manager {
 
     /// Very basic test.
     #[test]
-    #[ignore = "TODO(P1): BufferPoolManager not yet implemented"]
     fn very_basic_test() {
-        let dm = DiskManagerMemory::new();
+        let dm = Arc::new(DiskManagerMemory::new());
         let bpm = BufferPoolManager::new(FRAMES, dm, K_DIST);
 
         let pid = bpm.new_page();
@@ -296,9 +290,8 @@ mod buffer_pool_manager {
 
     /// Page pin easy test.
     #[test]
-    #[ignore = "TODO(P1): BufferPoolManager not yet implemented"]
     fn page_pin_easy_test() {
-        let dm = DiskManagerMemory::new();
+        let dm = Arc::new(DiskManagerMemory::new());
         let bpm = BufferPoolManager::new(2, dm, 5);
 
         let page_id0;
@@ -414,9 +407,8 @@ mod buffer_pool_manager {
 
     /// Page pin medium test.
     #[test]
-    #[ignore = "TODO(P1): BufferPoolManager not yet implemented"]
     fn page_pin_medium_test() {
-        let dm = DiskManagerMemory::new();
+        let dm = Arc::new(DiskManagerMemory::new());
         let bpm = BufferPoolManager::new(FRAMES, dm, K_DIST);
 
         // Scenario: The buffer pool is empty. Create a new page.
@@ -486,9 +478,8 @@ mod buffer_pool_manager {
 
     /// Page access test: concurrent read/write access.
     #[test]
-    #[ignore = "TODO(P1): BufferPoolManager not yet implemented"]
     fn page_access_test() {
-        let dm = DiskManagerMemory::new();
+        let dm = Arc::new(DiskManagerMemory::new());
         let bpm = Arc::new(BufferPoolManager::new(1, dm, K_DIST));
         let rounds = 50;
 
@@ -525,9 +516,8 @@ mod buffer_pool_manager {
 
     /// Contention test: multiple writers.
     #[test]
-    #[ignore = "TODO(P1): BufferPoolManager not yet implemented"]
     fn contention_test() {
-        let dm = DiskManagerMemory::new();
+        let dm = Arc::new(DiskManagerMemory::new());
         let bpm = Arc::new(BufferPoolManager::new(FRAMES, dm, K_DIST));
         let rounds = 100_000;
 
@@ -555,9 +545,8 @@ mod buffer_pool_manager {
 
     /// Deadlock test: verify latch ordering prevents deadlocks.
     #[test]
-    #[ignore = "TODO(P1): BufferPoolManager not yet implemented"]
     fn deadlock_test() {
-        let dm = DiskManagerMemory::new();
+        let dm = Arc::new(DiskManagerMemory::new());
         let bpm = Arc::new(BufferPoolManager::new(FRAMES, dm, K_DIST));
 
         let pid0 = bpm.new_page();
@@ -588,9 +577,8 @@ mod buffer_pool_manager {
 
     /// Evictable test: ensure evictable status is always correct.
     #[test]
-    #[ignore = "TODO(P1): BufferPoolManager not yet implemented"]
     fn evictable_test() {
-        let dm = DiskManagerMemory::new();
+        let dm = Arc::new(DiskManagerMemory::new());
         let bpm = Arc::new(BufferPoolManager::new(1, dm, K_DIST));
         let rounds = 1000;
         let num_readers = 8;

@@ -85,10 +85,10 @@ unsafe impl Send for DiskRequest {}
 /// worker thread that processes the scheduled requests using the disk manager.
 /// The background thread is created in the `DiskScheduler::new()` constructor
 /// and joined when the `DiskScheduler` is dropped.
-pub struct DiskScheduler<D: DiskManager> {
+pub struct DiskScheduler {
     /// Pointer to the disk manager (shared ownership between the caller and
     /// the background worker thread).
-    disk_manager: Arc<D>,
+    disk_manager: Arc<dyn DiskManager>,
 
     /// Sending end of the MPSC channel. `schedule()` pushes requests here;
     /// the worker thread receives them on the other end. Wrapped in a `Mutex`
@@ -100,19 +100,18 @@ pub struct DiskScheduler<D: DiskManager> {
     background_thread: Option<JoinHandle<()>>,
 }
 
-impl<D: DiskManager + 'static> DiskScheduler<D> {
+impl DiskScheduler {
     /// Creates a new `DiskScheduler` and spawns the background worker thread.
-    pub fn new(disk_manager: D) -> Self {
-        let dm = Arc::new(disk_manager);
+    pub fn new(disk_manager: Arc<dyn DiskManager>) -> Self {
         let (tx, rx) = mpsc::channel::<Option<DiskRequest>>();
-        let dm_clone = Arc::clone(&dm);
+        let dm_clone = Arc::clone(&disk_manager);
 
         let handle = thread::spawn(move || {
             Self::start_worker_thread(dm_clone, rx);
         });
 
         DiskScheduler {
-            disk_manager: dm,
+            disk_manager,
             request_queue: Mutex::new(tx),
             background_thread: Some(handle),
         }
@@ -131,7 +130,7 @@ impl<D: DiskManager + 'static> DiskScheduler<D> {
     ///
     /// The background thread processes requests while the `DiskScheduler`
     /// exists. When `None` is received from the queue, the loop exits.
-    fn start_worker_thread(dm: Arc<D>, rx: mpsc::Receiver<Option<DiskRequest>>) {
+    fn start_worker_thread(dm: Arc<dyn DiskManager>, rx: mpsc::Receiver<Option<DiskRequest>>) {
         loop {
             match rx.recv() {
                 Ok(None) => {
@@ -178,14 +177,9 @@ impl<D: DiskManager + 'static> DiskScheduler<D> {
     pub fn deallocate_page(&self, page_id: PageId) {
         self.disk_manager.delete_page(page_id);
     }
-
-    /// Returns a reference to the inner disk manager.
-    pub fn disk_manager(&self) -> &D {
-        &self.disk_manager
-    }
 }
 
-impl<D: DiskManager> Drop for DiskScheduler<D> {
+impl Drop for DiskScheduler {
     fn drop(&mut self) {
         // Put a `None` in the queue to signal to exit the loop.
         self.request_queue
@@ -251,7 +245,7 @@ mod disk_scheduler {
         let mut buf = vec![0u8; BUSTUB_PAGE_SIZE];
         let mut data = vec![0u8; BUSTUB_PAGE_SIZE];
 
-        let dm = DiskManagerMemory::new();
+        let dm = Arc::new(DiskManagerMemory::new());
         let disk_scheduler = DiskScheduler::new(dm);
 
         let test_str = "A test string.";
@@ -259,8 +253,8 @@ mod disk_scheduler {
         let len = test_bytes.len().min(BUSTUB_PAGE_SIZE);
         data[..len].copy_from_slice(&test_bytes[..len]);
 
-        let (promise1, future1) = DiskScheduler::<DiskManagerMemory>::create_promise();
-        let (promise2, future2) = DiskScheduler::<DiskManagerMemory>::create_promise();
+        let (promise1, future1) = DiskScheduler::create_promise();
+        let (promise2, future2) = DiskScheduler::create_promise();
 
         disk_scheduler.schedule(DiskRequest {
             is_write: true,
