@@ -16,10 +16,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-use std::sync::atomic::{AtomicBool, AtomicI32, AtomicUsize, Ordering};
-use std::sync::{Mutex, RwLock};
-
-use crate::common::{BUSTUB_PAGE_SIZE, INVALID_PAGE_ID};
+use crate::common::{BUSTUB_PAGE_SIZE, INVALID_PAGE_ID, PageId};
 use crate::common::FrameId;
 
 /// A helper class for `BufferPoolManager` that manages a frame of memory and
@@ -34,21 +31,18 @@ pub struct FrameHeader {
     /// The frame ID / index of the frame this header represents.
     pub(crate) frame_id: FrameId,
 
-    /// The readers / writer latch for this frame.
-    pub(crate) rwlatch: RwLock<()>,
-
     /// The number of pins on this frame keeping the page in memory.
-    pub(crate) pin_count: AtomicUsize,
+    pub(crate) pin_count: usize,
 
     /// The dirty flag.
-    pub(crate) is_dirty: AtomicBool,
+    pub(crate) is_dirty: bool,
 
     /// The ID of the page currently stored in this frame, or
     /// `INVALID_PAGE_ID` if the frame is empty.
-    pub(crate) page_id: AtomicI32,
+    pub(crate) page_id: PageId,
 
     /// The actual page data. Protected by `Mutex` for interior mutability.
-    pub(crate) data: Mutex<Vec<u8>>,
+    pub(crate) data: Vec<u8>,
 }
 
 impl FrameHeader {
@@ -56,11 +50,10 @@ impl FrameHeader {
     pub fn new(frame_id: FrameId) -> Self {
         let mut this = FrameHeader {
             frame_id,
-            rwlatch: RwLock::new(()),
-            pin_count: AtomicUsize::new(0),
-            is_dirty: AtomicBool::new(false),
-            page_id: AtomicI32::new(INVALID_PAGE_ID),
-            data: Mutex::new(vec![0u8; BUSTUB_PAGE_SIZE]),
+            pin_count: 0,
+            is_dirty: false,
+            page_id: INVALID_PAGE_ID,
+            data: vec![0u8; BUSTUB_PAGE_SIZE],
         };
         this.reset();
         this
@@ -69,10 +62,10 @@ impl FrameHeader {
     /// Resets the frame header to its default state (zeroes data, clears
     /// pins, marks clean).
     pub(crate) fn reset(&mut self) {
-        self.data.lock().unwrap().fill(0);
-        self.pin_count.store(0, Ordering::Release);
-        self.is_dirty.store(false, Ordering::Release);
-        self.page_id.store(INVALID_PAGE_ID, Ordering::Release);
+        self.data.fill(0);
+        self.pin_count = 0;
+        self.is_dirty = false;
+        self.page_id = INVALID_PAGE_ID;
     }
 }
 

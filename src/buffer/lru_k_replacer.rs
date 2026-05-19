@@ -14,7 +14,7 @@
 //===----------------------------------------------------------------------===//
 
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use crate::common::FrameId;
 
@@ -32,19 +32,19 @@ pub struct LRUKNode {
     /// Least recent timestamp stored in front.
     /// Remove maybe_unused if you start using them.
     /// Feel free to change the member variables as you want.
-    history_: Vec<usize>,
-    k_: usize,
-    fid_: FrameId,
-    is_evictable_: bool,
+    history: Vec<usize>,
+    k: usize,
+    fid: FrameId,
+    is_evictable: bool,
 }
 
 impl LRUKNode {
     pub fn new(k: usize, fid: FrameId) -> Self {
         Self {
-            history_: Vec::new(),
-            k_: k,
-            fid_: fid,
-            is_evictable_: false,
+            history: Vec::new(),
+            k: k,
+            fid: fid,
+            is_evictable: false,
         }
     }
 }
@@ -59,15 +59,20 @@ impl LRUKNode {
 /// +inf as its backward k-distance. When multiple frames have +inf backward k-distance,
 /// classical LRU algorithm is used to choose victim.
 #[allow(dead_code)]
-pub struct LRUKReplacer {
+struct LRUKReplacerCore {
     /// TODO(student): implement me! You can replace these member variables as you like.
     /// Remove maybe_unused if you start using them.
-    node_store_: HashMap<FrameId, LRUKNode>,
-    current_timestamp_: usize,
-    curr_size_: usize,
-    replacer_size_: usize,
-    k_: usize,
-    latch_: Mutex<()>,
+    node_store: HashMap<FrameId, LRUKNode>,
+    current_timestamp: usize,
+    curr_size: usize,
+    replacer_size: usize,
+    k: usize,
+}
+
+#[allow(dead_code)]
+#[derive(Clone)]
+pub struct LRUKReplacer {
+    core: Arc<Mutex<LRUKReplacerCore>>
 }
 
 impl LRUKReplacer {
@@ -78,12 +83,13 @@ impl LRUKReplacer {
     /// * `num_frames` - the maximum number of frames the LRUReplacer will be required to store
     pub fn new(num_frames: usize, k: usize) -> Self {
         Self {
-            node_store_: HashMap::new(),
-            current_timestamp_: 0,
-            curr_size_: 0,
-            replacer_size_: num_frames,
-            k_: k,
-            latch_: Mutex::new(()),
+            core: Arc::new(Mutex::new(LRUKReplacerCore {
+                node_store: HashMap::new(),
+                current_timestamp: 0,
+                curr_size: 0,
+                replacer_size: num_frames,
+                k,
+            }))
         }
     }
 
@@ -100,7 +106,7 @@ impl LRUKReplacer {
     /// access history.
     ///
     /// Returns `Some(frame_id)` if a frame is evicted successfully, `None` if no frames can be evicted.
-    pub fn evict(&mut self) -> Option<FrameId> {
+    pub fn evict(&self) -> Option<FrameId> {
         todo!("TODO(P1): Add implementation")
     }
 
@@ -114,7 +120,7 @@ impl LRUKReplacer {
     /// * `frame_id` - id of frame that received a new access.
     /// * `access_type` - type of access that was received. This parameter is only needed for
     ///   leaderboard tests.
-    pub fn record_access(&mut self, frame_id: FrameId, access_type: AccessType) {
+    pub fn record_access(&self, frame_id: FrameId, access_type: AccessType) {
         let _ = (frame_id, access_type);
         todo!("TODO(P1): Add implementation")
     }
@@ -134,7 +140,7 @@ impl LRUKReplacer {
     ///
     /// * `frame_id` - id of frame whose 'evictable' status will be modified
     /// * `set_evictable` - whether the given frame is evictable or not
-    pub fn set_evictable(&mut self, frame_id: FrameId, set_evictable: bool) {
+    pub fn set_evictable(&self, frame_id: FrameId, set_evictable: bool) {
         let _ = (frame_id, set_evictable);
         todo!("TODO(P1): Add implementation")
     }
@@ -153,7 +159,7 @@ impl LRUKReplacer {
     /// If specified frame is not found, directly return from this function.
     ///
     /// * `frame_id` - id of frame to be removed
-    pub fn remove(&mut self, frame_id: FrameId) {
+    pub fn remove(&self, frame_id: FrameId) {
         let _ = frame_id;
         todo!("TODO(P1): Add implementation")
     }
@@ -177,7 +183,7 @@ mod lru_k {
         // the optional type actually contains a value.
 
         // Initialize the replacer.
-        let mut lru_replacer = LRUKReplacer::new(7, 2);
+        let lru_replacer = LRUKReplacer::new(7, 2);
 
         // Add six frames to the replacer. We now have frames [1, 2, 3, 4, 5].
         // We set frame 6 as non-evictable.

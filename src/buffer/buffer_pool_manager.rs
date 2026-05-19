@@ -40,7 +40,7 @@ struct BufferPoolManagerCore {
     next_page_id: AtomicI32,
 
     /// The frame headers of the frames that this buffer pool manages.
-    frames: Vec<Arc<FrameHeader>>,
+    frames: Vec<Arc<Mutex<FrameHeader>>>,
 
     /// The page table that keeps track of the mapping between pages and
     /// buffer pool frames.
@@ -56,7 +56,7 @@ struct BufferPoolManagerCore {
     disk_scheduler: DiskScheduler,
 }
 
-
+#[derive(Clone)]
 pub struct BufferPoolManager {
     core: Arc<Mutex<BufferPoolManagerCore>>
 }
@@ -77,7 +77,7 @@ impl BufferPoolManager {
         // Allocate all in-memory frames up front and initialize the free
         // frame list with all possible frame IDs.
         for i in 0..num_frames {
-            frames.push(Arc::new(FrameHeader::new(i as FrameId)));
+            frames.push(Arc::new(Mutex::new(FrameHeader::new(i as FrameId))));
             free_frames.push_back(i as FrameId);
         }
 
@@ -128,7 +128,7 @@ impl BufferPoolManager {
         &self,
         page_id: PageId,
         _access_type: AccessType,
-    ) -> Option<WritePageGuard> {
+    ) -> Option<WritePageGuard<'_>> {
         let _ = page_id;
         todo!("TODO(P1): Add implementation.")
     }
@@ -142,7 +142,7 @@ impl BufferPoolManager {
         &self,
         page_id: PageId,
         _access_type: AccessType,
-    ) -> Option<ReadPageGuard> {
+    ) -> Option<ReadPageGuard<'_>> {
         let _ = page_id;
         todo!("TODO(P1): Add implementation.")
     }
@@ -155,7 +155,7 @@ impl BufferPoolManager {
         &self,
         page_id: PageId,
         access_type: AccessType,
-    ) -> WritePageGuard {
+    ) -> WritePageGuard<'_> {
         self.checked_write_page(page_id, access_type)
             .expect("CheckedWritePage failed to bring in page")
     }
@@ -168,7 +168,7 @@ impl BufferPoolManager {
         &self,
         page_id: PageId,
         access_type: AccessType,
-    ) -> ReadPageGuard {
+    ) -> ReadPageGuard<'_> {
         self.checked_read_page(page_id, access_type)
             .expect("CheckedReadPage failed to bring in page")
     }
@@ -208,21 +208,21 @@ impl BufferPoolManager {
 #[cfg(test)]
 mod buffer_pool_manager {
     use super::*;
-    use std::sync::Mutex as StdMutex;
+    use std::sync::{Mutex, Barrier};
     use std::thread;
     use std::time::Duration;
-    use std::sync::atomic::Ordering;
+    use std::collections::HashMap;
     use crate::common::BUSTUB_PAGE_SIZE;
 
     /// A simple in-memory DiskManager for testing.
     struct DiskManagerMemory {
-        pages: StdMutex<std::collections::HashMap<PageId, Vec<u8>>>,
+        pages: Mutex<HashMap<PageId, Vec<u8>>>,
     }
 
     impl DiskManagerMemory {
         fn new() -> Self {
             Self {
-                pages: StdMutex::new(std::collections::HashMap::new()),
+                pages: Mutex::new(HashMap::new()),
             }
         }
     }
@@ -252,7 +252,6 @@ mod buffer_pool_manager {
     const FRAMES: usize = 10;
     const K_DIST: usize = 5;
 
-    /// Very basic test.
     #[test]
     fn very_basic_test() {
         let dm = Arc::new(DiskManagerMemory::new());
@@ -263,32 +262,28 @@ mod buffer_pool_manager {
         let test_bytes = b"Hello, world!";
         let len = test_bytes.len();
 
-        // Check `WritePageGuard` basic functionality.
         {
             let mut guard = bpm.write_page(pid, AccessType::Unknown);
-            let data = guard.get_data_mut();
+            let data = guard.as_mut_slice();
             data[..len].copy_from_slice(test_bytes);
             assert_eq!(&data[..len], test_bytes);
         }
 
-        // Check `ReadPageGuard` basic functionality.
         {
             let guard = bpm.read_page(pid, AccessType::Unknown);
-            let data = guard.get_data();
+            let data = guard.as_slice();
             assert_eq!(&data[..len], test_bytes);
         }
 
-        // Check `ReadPageGuard` basic functionality (again).
         {
             let guard = bpm.read_page(pid, AccessType::Unknown);
-            let data = guard.get_data();
+            let data = guard.as_slice();
             assert_eq!(&data[..len], test_bytes);
         }
 
         assert!(bpm.delete_page(pid));
     }
 
-    /// Page pin easy test.
     #[test]
     fn page_pin_easy_test() {
         let dm = Arc::new(DiskManagerMemory::new());
@@ -297,14 +292,13 @@ mod buffer_pool_manager {
         let page_id0;
         let page_id1;
 
-        // Scope: write to both pages, fill the buffer pool.
         {
             page_id0 = bpm.new_page();
             let mut page0_write = bpm
                 .checked_write_page(page_id0, AccessType::Unknown)
                 .expect("should get page0");
             {
-                let data = page0_write.get_data_mut();
+                let data = page0_write.as_mut_slice();
                 let msg = b"page0";
                 data[..msg.len()].copy_from_slice(msg);
             }
@@ -314,7 +308,7 @@ mod buffer_pool_manager {
                 .checked_write_page(page_id1, AccessType::Unknown)
                 .expect("should get page1");
             {
-                let data = page1_write.get_data_mut();
+                let data = page1_write.as_mut_slice();
                 let msg = b"page1";
                 data[..msg.len()].copy_from_slice(msg);
             }
@@ -322,7 +316,6 @@ mod buffer_pool_manager {
             assert_eq!(Some(1), bpm.get_pin_count(page_id0));
             assert_eq!(Some(1), bpm.get_pin_count(page_id1));
 
-            // Buffer pool is full, should not be able to create new pages.
             let temp_id1 = bpm.new_page();
             assert!(bpm.checked_read_page(temp_id1, AccessType::Unknown).is_none());
 
@@ -332,15 +325,14 @@ mod buffer_pool_manager {
                 .is_none());
 
             assert_eq!(Some(1), bpm.get_pin_count(page_id0));
-            page0_write.drop_guard();
+            drop(page0_write);
             assert_eq!(Some(0), bpm.get_pin_count(page_id0));
 
             assert_eq!(Some(1), bpm.get_pin_count(page_id1));
-            page1_write.drop_guard();
+            drop(page1_write);
             assert_eq!(Some(0), bpm.get_pin_count(page_id1));
         }
 
-        // Now pages are evicted. We should be able to bring in new pages.
         {
             let temp_id1 = bpm.new_page();
             assert!(bpm
@@ -356,14 +348,13 @@ mod buffer_pool_manager {
             assert!(bpm.get_pin_count(page_id1).is_none());
         }
 
-        // Bring back the original pages and verify data.
         {
             let mut page0_write = bpm
                 .checked_write_page(page_id0, AccessType::Unknown)
                 .expect("page0 should be available");
-            assert_eq!(&page0_write.get_data()[..5], b"page0");
+            assert_eq!(&page0_write.as_slice()[..5], b"page0");
             {
-                let data = page0_write.get_data_mut();
+                let data = page0_write.as_mut_slice();
                 let msg = b"page0updated";
                 data[..msg.len()].copy_from_slice(msg);
             }
@@ -371,9 +362,9 @@ mod buffer_pool_manager {
             let mut page1_write = bpm
                 .checked_write_page(page_id1, AccessType::Unknown)
                 .expect("page1 should be available");
-            assert_eq!(&page1_write.get_data()[..5], b"page1");
+            assert_eq!(&page1_write.as_slice()[..5], b"page1");
             {
-                let data = page1_write.get_data_mut();
+                let data = page1_write.as_mut_slice();
                 let msg = b"page1updated";
                 data[..msg.len()].copy_from_slice(msg);
             }
@@ -385,17 +376,16 @@ mod buffer_pool_manager {
         assert_eq!(Some(0), bpm.get_pin_count(page_id0));
         assert_eq!(Some(0), bpm.get_pin_count(page_id1));
 
-        // Read back and verify updated data.
         {
             let page0_read = bpm
                 .checked_read_page(page_id0, AccessType::Unknown)
                 .expect("page0 should be readable");
-            assert_eq!(&page0_read.get_data()[..13], b"page0updated");
+            assert_eq!(&page0_read.as_slice()[..13], b"page0updated");
 
             let page1_read = bpm
                 .checked_read_page(page_id1, AccessType::Unknown)
                 .expect("page1 should be readable");
-            assert_eq!(&page1_read.get_data()[..13], b"page1updated");
+            assert_eq!(&page1_read.as_slice()[..13], b"page1updated");
 
             assert_eq!(Some(1), bpm.get_pin_count(page_id0));
             assert_eq!(Some(1), bpm.get_pin_count(page_id1));
@@ -405,37 +395,32 @@ mod buffer_pool_manager {
         assert_eq!(Some(0), bpm.get_pin_count(page_id1));
     }
 
-    /// Page pin medium test.
     #[test]
     fn page_pin_medium_test() {
         let dm = Arc::new(DiskManagerMemory::new());
         let bpm = BufferPoolManager::new(FRAMES, dm, K_DIST);
 
-        // Scenario: The buffer pool is empty. Create a new page.
         let pid0 = bpm.new_page();
         {
             let mut page0 = bpm.write_page(pid0, AccessType::Unknown);
             let msg = b"Hello";
-            page0.get_data_mut()[..msg.len()].copy_from_slice(msg);
-            assert_eq!(&page0.get_data()[..msg.len()], msg);
+            page0.as_mut_slice()[..msg.len()].copy_from_slice(msg);
+            assert_eq!(&page0.as_slice()[..msg.len()], msg);
         }
 
         let mut pages: Vec<WritePageGuard> = Vec::new();
 
-        // Scenario: Create new pages until the buffer pool is full.
         for _ in 0..FRAMES {
             let pid = bpm.new_page();
             let page = bpm.write_page(pid, AccessType::Unknown);
             pages.push(page);
         }
 
-        // All pin counts should be 1.
         for page in &pages {
             let pid = page.get_page_id();
             assert_eq!(Some(1), bpm.get_pin_count(pid));
         }
 
-        // Once full, cannot create new pages.
         for _ in 0..FRAMES {
             let pid = bpm.new_page();
             assert!(bpm
@@ -443,7 +428,6 @@ mod buffer_pool_manager {
                 .is_none());
         }
 
-        // Drop the first 5 pages to unpin them.
         for _ in 0..FRAMES / 2 {
             let pid = pages[0].get_page_id();
             assert_eq!(Some(1), bpm.get_pin_count(pid));
@@ -451,128 +435,109 @@ mod buffer_pool_manager {
             assert_eq!(Some(0), bpm.get_pin_count(pid));
         }
 
-        // Remaining pages still have pin count 1.
         for page in &pages {
             assert_eq!(Some(1), bpm.get_pin_count(page.get_page_id()));
         }
 
-        // Create 4 new pages, which should evict the oldest ones.
         for _ in 0..(FRAMES / 2) - 1 {
             let pid = bpm.new_page();
             let page = bpm.write_page(pid, AccessType::Unknown);
             pages.push(page);
         }
 
-        // Fetch page 0 and verify data.
         {
             let original_page = bpm.read_page(pid0, AccessType::Unknown);
-            assert_eq!(&original_page.get_data()[..5], b"Hello");
+            assert_eq!(&original_page.as_slice()[..5], b"Hello");
         }
 
-        // Pin the last page, then try to fetch page 0 again (should fail).
         let last_pid = bpm.new_page();
         let _last_page = bpm.read_page(last_pid, AccessType::Unknown);
 
         assert!(bpm.checked_read_page(pid0, AccessType::Unknown).is_none());
     }
 
-    /// Page access test: concurrent read/write access.
     #[test]
     fn page_access_test() {
         let dm = Arc::new(DiskManagerMemory::new());
-        let bpm = Arc::new(BufferPoolManager::new(1, dm, K_DIST));
+        let bpm = BufferPoolManager::new(1, dm, K_DIST);
         let rounds = 50;
 
         let pid = bpm.new_page();
 
-        let bpm_writer = Arc::clone(&bpm);
-        let writer = thread::spawn(move || {
-            for i in 0..rounds {
-                thread::sleep(Duration::from_millis(5));
-                let mut guard = bpm_writer.write_page(pid, AccessType::Unknown);
-                let s = i.to_string();
-                let bytes = s.as_bytes();
-                let data = guard.get_data_mut();
-                data[..bytes.len()].copy_from_slice(bytes);
+        thread::scope(|s| {
+            s.spawn(|| {
+                for i in 0..rounds {
+                    thread::sleep(Duration::from_millis(5));
+                    let mut guard = bpm.write_page(pid, AccessType::Unknown);
+                    let str_val = i.to_string();
+                    let bytes = str_val.as_bytes();
+                    let data = guard.as_mut_slice();
+                    data[..bytes.len()].copy_from_slice(bytes);
+                }
+            });
+
+            for _ in 0..rounds {
+                thread::sleep(Duration::from_millis(10));
+
+                let guard = bpm.read_page(pid, AccessType::Unknown);
+                let mut buf = vec![0u8; BUSTUB_PAGE_SIZE];
+                buf[..BUSTUB_PAGE_SIZE].copy_from_slice(guard.as_slice());
+
+                thread::sleep(Duration::from_millis(10));
+
+                assert_eq!(guard.as_slice(), buf.as_slice());
             }
         });
-
-        let bpm_reader = Arc::clone(&bpm);
-        for _ in 0..rounds {
-            thread::sleep(Duration::from_millis(10));
-
-            let guard = bpm_reader.read_page(pid, AccessType::Unknown);
-            let mut buf = vec![0u8; BUSTUB_PAGE_SIZE];
-            buf[..BUSTUB_PAGE_SIZE].copy_from_slice(guard.get_data());
-
-            thread::sleep(Duration::from_millis(10));
-
-            // Data should be unmodified while holding the read guard.
-            assert_eq!(guard.get_data(), buf.as_slice());
-        }
-
-        writer.join().unwrap();
     }
 
-    /// Contention test: multiple writers.
     #[test]
     fn contention_test() {
         let dm = Arc::new(DiskManagerMemory::new());
-        let bpm = Arc::new(BufferPoolManager::new(FRAMES, dm, K_DIST));
+        let bpm = BufferPoolManager::new(FRAMES, dm, K_DIST);
         let rounds = 100_000;
 
         let pid = bpm.new_page();
 
-        let mut handles = vec![];
-        for _ in 0..4 {
-            let bpm_clone = Arc::clone(&bpm);
-            let handle = thread::spawn(move || {
-                for i in 0..rounds {
-                    let mut guard = bpm_clone.write_page(pid, AccessType::Unknown);
-                    let s = i.to_string();
-                    let bytes = s.as_bytes();
-                    let data = guard.get_data_mut();
-                    data[..bytes.len()].copy_from_slice(bytes);
-                }
-            });
-            handles.push(handle);
-        }
-
-        for handle in handles {
-            handle.join().unwrap();
-        }
+        thread::scope(|s| {
+            for _ in 0..4 {
+                s.spawn(|| {
+                    for i in 0..rounds {
+                        let mut guard = bpm.write_page(pid, AccessType::Unknown);
+                        let str_val = i.to_string();
+                        let bytes = str_val.as_bytes();
+                        let data = guard.as_mut_slice();
+                        data[..bytes.len()].copy_from_slice(bytes);
+                    }
+                });
+            }
+        });
     }
 
-    /// Deadlock test: verify latch ordering prevents deadlocks.
     #[test]
     fn deadlock_test() {
         let dm = Arc::new(DiskManagerMemory::new());
-        let bpm = Arc::new(BufferPoolManager::new(FRAMES, dm, K_DIST));
+        let bpm = BufferPoolManager::new(FRAMES, dm, K_DIST);
 
         let pid0 = bpm.new_page();
         let pid1 = bpm.new_page();
 
-        let mut guard0 = bpm.write_page(pid0, AccessType::Unknown);
+        let guard0 = bpm.write_page(pid0, AccessType::Unknown);
+        let barrier = Barrier::new(2);
 
-        let start = Arc::new(AtomicI32::new(0));
-        let start_clone = Arc::clone(&start);
-        let bpm_child = Arc::clone(&bpm);
+        thread::scope(|s| {
+            s.spawn(|| {
+                barrier.wait();
+                let _guard0 = bpm.write_page(pid0, AccessType::Unknown);
+            });
 
-        let child = thread::spawn(move || {
-            start_clone.store(1, Ordering::Release);
-            let _guard0 = bpm_child.write_page(pid0, AccessType::Unknown);
+            barrier.wait();
+            thread::sleep(Duration::from_millis(1000));
+
+            let guard1 = bpm.write_page(pid1, AccessType::Unknown);
+
+            drop(guard0);
+            drop(guard1);
         });
-
-        while start.load(Ordering::Acquire) == 0 {}
-
-        thread::sleep(Duration::from_millis(1000));
-
-        let guard1 = bpm.write_page(pid1, AccessType::Unknown);
-
-        guard0.drop_guard();
-        drop(guard1);
-
-        child.join().unwrap();
     }
 
     /// Evictable test: ensure evictable status is always correct.
@@ -587,48 +552,29 @@ mod buffer_pool_manager {
             let winner_pid = bpm.new_page();
             let loser_pid = bpm.new_page();
 
-            let signal = Arc::new(Mutex::new(false));
-            let cv = Arc::new(std::sync::Condvar::new());
+            let barrier = Barrier::new(num_readers + 1);
 
-            let mut readers = vec![];
-            for _ in 0..num_readers {
-                let bpm_clone = Arc::clone(&bpm);
-                let signal_clone = Arc::clone(&signal);
-                let cv_clone = Arc::clone(&cv);
+            thread::scope(|s| {
+                for _ in 0..num_readers {
+                    s.spawn(|| {
+                        barrier.wait();
 
-                let handle = thread::spawn(move || {
-                    let mut signaled = signal_clone.lock().unwrap();
-                    while !*signaled {
-                        signaled = cv_clone.wait(signaled).unwrap();
-                    }
-                    drop(signaled);
+                        let _read_guard = bpm.read_page(winner_pid, AccessType::Unknown);
+                        assert!(bpm
+                            .checked_read_page(loser_pid, AccessType::Unknown)
+                            .is_none());
+                    });
+                }
 
-                    let _read_guard = bpm_clone.read_page(winner_pid, AccessType::Unknown);
-                    assert!(bpm_clone
-                        .checked_read_page(loser_pid, AccessType::Unknown)
-                        .is_none());
-                });
-                readers.push(handle);
-            }
-
-            {
-                let mut signal_lock = signal.lock().unwrap();
                 if i % 2 == 0 {
                     let _read_guard = bpm.read_page(winner_pid, AccessType::Unknown);
-                    *signal_lock = true;
-                    cv.notify_all();
-                    drop(signal_lock);
+                    barrier.wait();
                 } else {
                     let _write_guard = bpm.write_page(winner_pid, AccessType::Unknown);
-                    *signal_lock = true;
-                    cv.notify_all();
-                    drop(signal_lock);
+                    barrier.wait();
                 }
-            }
-
-            for reader in readers {
-                reader.join().unwrap();
-            }
+                
+            });
         }
     }
 }
