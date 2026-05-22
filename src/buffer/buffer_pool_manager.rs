@@ -1,9 +1,3 @@
-// Date:   Sun May 17 20:33:00 2026
-// Mail:   lunar_ubuntu@qq.com
-// Author: https://github.com/xiaoqixian
-// Date:   Sun May 17 16:12:00 2026
-// Mail:   lunar_ubuntu@qq.com
-// Author: https://github.com/xiaoqixian
 //===----------------------------------------------------------------------===//
 //
 //                         BusTub
@@ -31,15 +25,22 @@ use crate::storage::page::page_guard::{ReadPageGuard, WritePageGuard};
 /// back and forth from buffers in main memory to persistent storage. It also
 /// behaves as a cache, keeping frequently used pages in memory for faster
 /// access, and evicting unused or cold pages back out to storage.
+///
+/// The buffer pool manager owns the set of frames it manages, the page table
+/// that maps page IDs to frame IDs, a free frame list, and the LRU-K replacer
+/// for eviction decisions. All internal state is protected by an `Arc<Mutex<>>`.
 #[allow(dead_code)]
 struct BufferPoolManagerCore {
     /// The number of frames in the buffer pool.
     num_frames: usize,
 
-    /// The next page ID to be allocated.
+    /// The next page ID to be allocated. Initialized to 0 and incremented
+    /// atomically on each `new_page()` call.
     next_page_id: AtomicI32,
 
     /// The frame headers of the frames that this buffer pool manages.
+    /// Each frame is wrapped in `Arc<Mutex<FrameHeader>>` so it can be
+    /// shared with page guards for safe concurrent access.
     frames: Vec<Arc<Mutex<FrameHeader>>>,
 
     /// The page table that keeps track of the mapping between pages and
@@ -52,10 +53,15 @@ struct BufferPoolManagerCore {
     /// The replacer to find unpinned / candidate pages for eviction.
     replacer: LRUKReplacer,
 
-    /// The disk scheduler.
+    /// The disk scheduler for reading and writing pages to persistent storage.
     disk_scheduler: DiskScheduler,
 }
 
+/// A thread-safe, shareable handle to the buffer pool manager.
+///
+/// Wraps `BufferPoolManagerCore` in `Arc<Mutex<...>>` so that it can be
+/// cloned and shared between threads. The mutex guards all internal state
+/// (page table, free list, replacer, etc.).
 #[derive(Clone)]
 pub struct BufferPoolManager {
     core: Arc<Mutex<BufferPoolManagerCore>>
@@ -64,8 +70,12 @@ pub struct BufferPoolManager {
 impl BufferPoolManager {
     /// Creates a new `BufferPoolManager`.
     ///
-    /// * `num_frames` - the size of the buffer pool.
-    /// * `disk_manager` - the disk manager.
+    /// Allocates `num_frames` in-memory frames up front and initializes the
+    /// free frame list with all possible frame IDs. The replacer is created
+    /// with the given `k_dist` value.
+    ///
+    /// * `num_frames` - the size of the buffer pool (number of frames).
+    /// * `disk_manager` - the disk manager for persistent storage I/O.
     /// * `k_dist` - the backward k-distance for the LRU-K replacer.
     pub fn new(num_frames: usize, disk_manager: Arc<dyn DiskManager>, k_dist: usize) -> Self {
         let replacer = LRUKReplacer::new(num_frames, k_dist);
@@ -103,6 +113,8 @@ impl BufferPoolManager {
 
     /// Allocates a new page on disk.
     ///
+    /// Returns the page ID of the newly allocated page.
+    ///
     /// TODO(P1): Add implementation.
     pub fn new_page(&self) -> PageId {
         todo!("TODO(P1): Add implementation.")
@@ -114,6 +126,8 @@ impl BufferPoolManager {
     /// and returns `false`. Otherwise, removes the page from both disk and
     /// memory (if it is still in the buffer pool), returning `true`.
     ///
+    /// * `page_id` - the ID of the page to delete.
+    ///
     /// TODO(P1): Add implementation.
     pub fn delete_page(&self, _page_id: PageId) -> bool {
         todo!("TODO(P1): Add implementation.")
@@ -121,7 +135,11 @@ impl BufferPoolManager {
 
     /// Acquires an optional write-locked guard over a page of data.
     ///
-    /// If it is not possible to bring the page into memory, returns `None`.
+    /// If the page is not in the buffer pool, it is fetched from disk. If
+    /// there is no available frame and no evictable pages, returns `None`.
+    ///
+    /// * `page_id` - the ID of the page to access.
+    /// * `_access_type` - the type of access (used for replacer tracking).
     ///
     /// TODO(P1): Add implementation.
     pub fn checked_write_page(
@@ -135,7 +153,11 @@ impl BufferPoolManager {
 
     /// Acquires an optional read-locked guard over a page of data.
     ///
-    /// If it is not possible to bring the page into memory, returns `None`.
+    /// If the page is not in the buffer pool, it is fetched from disk. If
+    /// there is no available frame and no evictable pages, returns `None`.
+    ///
+    /// * `page_id` - the ID of the page to access.
+    /// * `_access_type` - the type of access (used for replacer tracking).
     ///
     /// TODO(P1): Add implementation.
     pub fn checked_read_page(
@@ -177,6 +199,8 @@ impl BufferPoolManager {
     ///
     /// Returns `false` if the page could not be found in the page table.
     ///
+    /// * `page_id` - the ID of the page to flush.
+    ///
     /// TODO(P1): Add implementation.
     pub fn flush_page(&self, page_id: PageId) -> bool {
         let _ = page_id;
@@ -184,6 +208,9 @@ impl BufferPoolManager {
     }
 
     /// Flushes all page data that is in memory to disk.
+    ///
+    /// Iterates over every frame in the buffer pool and flushes dirty pages
+    /// to disk via the disk scheduler.
     ///
     /// TODO(P1): Add implementation.
     pub fn flush_all_pages(&self) {
@@ -193,6 +220,8 @@ impl BufferPoolManager {
     /// Retrieves the pin count of a page.
     ///
     /// Returns `None` if the page does not exist in memory.
+    ///
+    /// * `page_id` - the ID of the page to query.
     ///
     /// TODO(P1): Add implementation.
     pub fn get_pin_count(&self, page_id: PageId) -> Option<usize> {
@@ -206,23 +235,24 @@ impl BufferPoolManager {
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
-mod buffer_pool_manager {
+mod buffer_pool_manager_tests {
     use super::*;
-    use std::sync::{Mutex, Barrier};
+    use std::sync::Barrier;
     use std::thread;
     use std::time::Duration;
     use std::collections::HashMap;
+    use std::sync::Mutex as StdMutex;
     use crate::common::BUSTUB_PAGE_SIZE;
 
     /// A simple in-memory DiskManager for testing.
     struct DiskManagerMemory {
-        pages: Mutex<HashMap<PageId, Vec<u8>>>,
+        pages: StdMutex<HashMap<PageId, Vec<u8>>>,
     }
 
     impl DiskManagerMemory {
         fn new() -> Self {
             Self {
-                pages: Mutex::new(HashMap::new()),
+                pages: StdMutex::new(HashMap::new()),
             }
         }
     }
@@ -573,10 +603,9 @@ mod buffer_pool_manager {
                     let _write_guard = bpm.write_page(winner_pid, AccessType::Unknown);
                     barrier.wait();
                 }
-                
+
             });
         }
     }
 }
-
 

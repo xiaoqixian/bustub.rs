@@ -1,6 +1,3 @@
-// Date:   Sun May 17 15:34:04 2026
-// Mail:   lunar_ubuntu@qq.com
-// Author: https://github.com/xiaoqixian
 //===----------------------------------------------------------------------===//
 //
 //                         BusTub
@@ -18,6 +15,7 @@ use std::sync::{Arc, Mutex};
 
 use crate::common::FrameId;
 
+/// The type of access that was made to a frame.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AccessType {
     Unknown = 0,
@@ -26,24 +24,34 @@ pub enum AccessType {
     Index,
 }
 
+/// LRUKNode stores the access history and eviction metadata for a single
+/// frame tracked by the LRU-K replacer.
 #[allow(dead_code)]
 pub struct LRUKNode {
-    /// History of last seen K timestamps of this page.
-    /// Least recent timestamp stored in front.
-    /// Remove maybe_unused if you start using them.
-    /// Feel free to change the member variables as you want.
+    /// History of last seen K timestamps of this frame. Least recent
+    /// timestamp is stored in front (oldest first).
     history: Vec<usize>,
+
+    /// The K value for this node (the backward k-distance threshold).
     k: usize,
+
+    /// The frame ID this node represents.
     fid: FrameId,
+
+    /// Whether this frame is currently eligible for eviction.
     is_evictable: bool,
 }
 
 impl LRUKNode {
+    /// Creates a new `LRUKNode` for the given frame.
+    ///
+    /// The node starts with an empty access history and is not evictable
+    /// by default.
     pub fn new(k: usize, fid: FrameId) -> Self {
         Self {
             history: Vec::new(),
-            k: k,
-            fid: fid,
+            k,
+            fid,
             is_evictable: false,
         }
     }
@@ -52,35 +60,49 @@ impl LRUKNode {
 /// LRUKReplacer implements the LRU-k replacement policy.
 ///
 /// The LRU-k algorithm evicts a frame whose backward k-distance is maximum
-/// of all frames. Backward k-distance is computed as the difference in time between
-/// current timestamp and the timestamp of kth previous access.
+/// of all frames. Backward k-distance is computed as the difference in time
+/// between the current timestamp and the timestamp of the kth previous
+/// access.
 ///
-/// A frame with less than k historical references is given
-/// +inf as its backward k-distance. When multiple frames have +inf backward k-distance,
-/// classical LRU algorithm is used to choose victim.
+/// A frame with less than k historical references is given +inf as its
+/// backward k-distance. When multiple frames have +inf backward k-distance,
+/// the classical LRU algorithm is used to choose the victim.
 #[allow(dead_code)]
 struct LRUKReplacerCore {
-    /// TODO(student): implement me! You can replace these member variables as you like.
-    /// Remove maybe_unused if you start using them.
+    /// Maps frame IDs to their corresponding LRU-K nodes.
     node_store: HashMap<FrameId, LRUKNode>,
+
+    /// The current logical timestamp, incremented on each access.
     current_timestamp: usize,
+
+    /// The current number of evictable frames tracked by the replacer.
     curr_size: usize,
+
+    /// The maximum number of frames the replacer can track.
     replacer_size: usize,
+
+    /// The backward k-distance threshold.
     k: usize,
 }
 
+/// A thread-safe, shareable handle to the LRU-K replacer.
+///
+/// Wraps the `LRUKReplacerCore` in `Arc<Mutex<...>>` so that it can be
+/// shared between the buffer pool manager and page guards.
 #[allow(dead_code)]
 #[derive(Clone)]
 pub struct LRUKReplacer {
-    core: Arc<Mutex<LRUKReplacerCore>>
+    core: Arc<Mutex<LRUKReplacerCore>>,
 }
 
 impl LRUKReplacer {
-    /// TODO(P1): Add implementation
+    /// Creates a new LRU-K replacer.
     ///
-    /// Create a new LRUKReplacer.
+    /// * `num_frames` - the maximum number of frames the replacer will be
+    ///   required to store.
+    /// * `k` - the backward k-distance threshold.
     ///
-    /// * `num_frames` - the maximum number of frames the LRUReplacer will be required to store
+    /// TODO(P1): Add implementation.
     pub fn new(num_frames: usize, k: usize) -> Self {
         Self {
             core: Arc::new(Mutex::new(LRUKReplacerCore {
@@ -89,89 +111,103 @@ impl LRUKReplacer {
                 curr_size: 0,
                 replacer_size: num_frames,
                 k,
-            }))
+            })),
         }
     }
 
-    /// TODO(P1): Add implementation
+    /// Finds the frame with the largest backward k-distance and evicts it.
+    /// Only frames that are marked as 'evictable' are candidates for
+    /// eviction.
     ///
-    /// Find the frame with largest backward k-distance and evict that frame. Only frames
-    /// that are marked as 'evictable' are candidates for eviction.
+    /// A frame with less than k historical references is given +inf as its
+    /// backward k-distance. If multiple frames have infinite backward
+    /// k-distance, then the frame with the earliest timestamp (based on LRU)
+    /// is evicted.
     ///
-    /// A frame with less than k historical references is given +inf as its backward k-distance.
-    /// If multiple frames have inf backward k-distance, then evict frame with earliest timestamp
-    /// based on LRU.
+    /// Successful eviction decrements the replacer's size and removes the
+    /// frame's access history.
     ///
-    /// Successful eviction of a frame should decrement the size of replacer and remove the frame's
-    /// access history.
+    /// Returns `Some(frame_id)` if a frame was evicted successfully, or
+    /// `None` if no frames can be evicted.
     ///
-    /// Returns `Some(frame_id)` if a frame is evicted successfully, `None` if no frames can be evicted.
+    /// TODO(P1): Add implementation.
     pub fn evict(&self) -> Option<FrameId> {
         todo!("TODO(P1): Add implementation")
     }
 
-    /// TODO(P1): Add implementation
+    /// Records an access event for the given frame at the current timestamp.
+    /// Creates a new entry in the access history if the frame has not been
+    /// seen before.
     ///
-    /// Record the event that the given frame id is accessed at current timestamp.
-    /// Create a new entry for access history if frame id has not been seen before.
+    /// If the frame ID is invalid (i.e., larger than `replacer_size`), the
+    /// process is aborted via an assertion.
     ///
-    /// If frame id is invalid (ie. larger than replacer_size_), abort the process.
+    /// * `frame_id` - the ID of the frame that received a new access.
+    /// * `access_type` - the type of access that was received. This
+    ///   parameter is only needed for leaderboard tests.
     ///
-    /// * `frame_id` - id of frame that received a new access.
-    /// * `access_type` - type of access that was received. This parameter is only needed for
-    ///   leaderboard tests.
+    /// TODO(P1): Add implementation.
     pub fn record_access(&self, frame_id: FrameId, access_type: AccessType) {
         let _ = (frame_id, access_type);
         todo!("TODO(P1): Add implementation")
     }
 
-    /// TODO(P1): Add implementation
+    /// Toggles whether a frame is evictable or non-evictable. This function
+    /// also controls the replacer's size, where size equals the number of
+    /// evictable entries.
     ///
-    /// Toggle whether a frame is evictable or non-evictable. This function also
-    /// controls replacer's size. Note that size is equal to number of evictable entries.
+    /// - If a frame was previously evictable and is being set to
+    ///   non-evictable, the size is decremented.
+    /// - If a frame was previously non-evictable and is being set to
+    ///   evictable, the size is incremented.
     ///
-    /// If a frame was previously evictable and is to be set to non-evictable, then size should
-    /// decrement. If a frame was previously non-evictable and is to be set to evictable,
-    /// then size should increment.
+    /// If the frame ID is invalid, the process is aborted via an assertion.
+    /// For all other unexpected scenarios, this function terminates without
+    /// modifying anything.
     ///
-    /// If frame id is invalid, abort the process.
+    /// * `frame_id` - the ID of the frame whose evictable status will be
+    ///   modified.
+    /// * `set_evictable` - whether the given frame should be evictable or
+    ///   not.
     ///
-    /// For other scenarios, this function should terminate without modifying anything.
-    ///
-    /// * `frame_id` - id of frame whose 'evictable' status will be modified
-    /// * `set_evictable` - whether the given frame is evictable or not
+    /// TODO(P1): Add implementation.
     pub fn set_evictable(&self, frame_id: FrameId, set_evictable: bool) {
         let _ = (frame_id, set_evictable);
         todo!("TODO(P1): Add implementation")
     }
 
-    /// TODO(P1): Add implementation
+    /// Removes an evictable frame from the replacer, along with its access
+    /// history. Also decrements the replacer's size if the removal was
+    /// successful.
     ///
-    /// Remove an evictable frame from replacer, along with its access history.
-    /// This function should also decrement replacer's size if removal is successful.
+    /// Note: This is different from evicting a frame, which always removes
+    /// the frame with the largest backward k-distance. This function removes
+    /// the specified frame regardless of its backward k-distance.
     ///
-    /// Note that this is different from evicting a frame, which always remove the frame
-    /// with largest backward k-distance. This function removes specified frame id,
-    /// no matter what its backward k-distance is.
+    /// If `remove()` is called on a non-evictable frame, the process is
+    /// aborted via an assertion. If the specified frame is not found, this
+    /// function returns without modifying anything.
     ///
-    /// If Remove is called on a non-evictable frame, abort the process.
+    /// * `frame_id` - the ID of the frame to be removed.
     ///
-    /// If specified frame is not found, directly return from this function.
-    ///
-    /// * `frame_id` - id of frame to be removed
+    /// TODO(P1): Add implementation.
     pub fn remove(&self, frame_id: FrameId) {
         let _ = frame_id;
         todo!("TODO(P1): Add implementation")
     }
 
-    /// TODO(P1): Add implementation
+    /// Returns the replacer's size, which tracks the number of evictable
+    /// frames.
     ///
-    /// Return replacer's size, which tracks the number of evictable frames.
+    /// TODO(P1): Add implementation.
     pub fn size(&self) -> usize {
         todo!("TODO(P1): Add implementation")
     }
 }
 
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 mod lru_k {
@@ -288,5 +324,4 @@ mod lru_k {
         lru_replacer.set_evictable(6, true);
     }
 }
-
 

@@ -1,9 +1,3 @@
-// Date:   Sun May 17 20:28:13 2026
-// Mail:   lunar_ubuntu@qq.com
-// Author: https://github.com/xiaoqixian
-// Date:   Sun May 17 16:12:00 2026
-// Mail:   lunar_ubuntu@qq.com
-// Author: https://github.com/xiaoqixian
 //===----------------------------------------------------------------------===//
 //
 //                         BusTub
@@ -26,22 +20,32 @@ use crate::common::PageId;
 // ReadPageGuard
 // ---------------------------------------------------------------------------
 
-/// An RAII object that grants thread-safe read access to a page of data.
+/// An RAII guard that grants thread-safe read access to a page of data.
 ///
 /// The _only_ way the system should interact with the buffer pool's page data
 /// is via page guards. With `ReadPageGuard`s, there can be multiple threads
 /// that share read access to a page's data. However, the existence of any
 /// `ReadPageGuard` on a page implies that no thread can be mutating the page's
 /// data.
+///
+/// When the guard is dropped, it releases the read lock on the frame's
+/// `RwLock` and decrements the pin count. If the pin count reaches zero,
+/// the frame is marked as evictable in the replacer.
 #[allow(dead_code)]
 pub struct ReadPageGuard<'a> {
     /// The page ID of the page we are guarding.
     pub(crate) page_id: PageId,
 
-    /// The frame that holds the page this guard is protecting.
+    /// The read-locked frame that holds the page this guard is protecting.
+    /// All operations on this page guard should be done via this
+    /// `RwLockReadGuard`.
     pub(crate) frame: RwLockReadGuard<'a, FrameHeader>,
 
     /// A shared pointer to the buffer pool's replacer.
+    ///
+    /// Since the buffer pool cannot know when this guard is destructed, we
+    /// maintain a handle to the replacer in order to set the frame as
+    /// evictable on destruction.
     pub(crate) replacer: LRUKReplacer,
 }
 
@@ -49,25 +53,39 @@ pub struct ReadPageGuard<'a> {
 // WritePageGuard
 // ---------------------------------------------------------------------------
 
-/// An RAII object that grants thread-safe write access to a page of data.
+/// An RAII guard that grants thread-safe write access to a page of data.
 ///
 /// The _only_ way the system should interact with the buffer pool's page data
-/// is via page guards. With a `WritePageGuard`, there can only be 1 thread
-/// that has exclusive ownership over the page's data. The owner can mutate the
-/// page's data as much as they want.
+/// is via page guards. With a `WritePageGuard`, only one thread can have
+/// exclusive ownership over the page's data. The owner can mutate the page's
+/// data as much as they want. The existence of a `WritePageGuard` implies that
+/// no other `WritePageGuard` or any `ReadPageGuard`s for the same page can
+/// exist at the same time.
+///
+/// When the guard is dropped, it releases the write lock on the frame's
+/// `RwLock`, marks the page as dirty, and decrements the pin count. If the
+/// pin count reaches zero, the frame is marked as evictable in the replacer.
 #[allow(dead_code)]
 pub struct WritePageGuard<'a> {
     /// The page ID of the page we are guarding.
     pub(crate) page_id: PageId,
 
-    /// The frame that holds the page this guard is protecting.
+    /// The write-locked frame that holds the page this guard is protecting.
+    /// All operations on this page guard should be done via this
+    /// `RwLockWriteGuard`.
     pub(crate) frame: RwLockWriteGuard<'a, FrameHeader>,
 
     /// A shared pointer to the buffer pool's replacer.
+    ///
+    /// Since the buffer pool cannot know when this guard is destructed, we
+    /// maintain a handle to the replacer in order to set the frame as
+    /// evictable on destruction.
     pub(crate) replacer: LRUKReplacer,
 }
 
 impl<'a> ReadPageGuard<'a> {
+    /// Only the buffer pool manager is allowed to construct a valid
+    /// `ReadPageGuard`.
     pub fn new(page_id: PageId, frame: RwLockReadGuard<'a, FrameHeader>, replacer: LRUKReplacer) -> Self {
         Self {
             page_id,
@@ -81,13 +99,15 @@ impl<'a> ReadPageGuard<'a> {
         self.page_id
     }
 
-    /// Gets a `const` pointer to the page of data this guard is protecting.
+    /// Gets a raw `const` pointer to the page of data this guard is
+    /// protecting.
     ///
     /// TODO(P1): Add implementation.
     pub fn as_ptr(&self) -> *const u8 {
         todo!("TODO(P1): Add implementation.")
     }
 
+    /// Returns an immutable reference to the page data as a `&[u8]` slice.
     pub fn as_slice(&self) -> &[u8] {
         self.frame.data.as_slice()
     }
@@ -101,6 +121,8 @@ impl<'a> ReadPageGuard<'a> {
 }
 
 impl<'a> WritePageGuard<'a> {
+    /// Only the buffer pool manager is allowed to construct a valid
+    /// `WritePageGuard`.
     pub fn new(page_id: PageId, frame: RwLockWriteGuard<'a, FrameHeader>, replacer: LRUKReplacer) -> Self {
         Self {
             page_id,
@@ -114,24 +136,28 @@ impl<'a> WritePageGuard<'a> {
         self.page_id
     }
 
-    /// Gets a `const` pointer to the page of data this guard is protecting.
+    /// Gets a raw `const` pointer to the page of data this guard is
+    /// protecting.
     ///
     /// TODO(P1): Add implementation.
     pub fn as_ptr(&self) -> *const u8 {
         todo!("TODO(P1): Add implementation.")
     }
 
-    /// Gets a mutable pointer to the page of data this guard is protecting.
+    /// Gets a raw mutable pointer to the page of data this guard is
+    /// protecting.
     ///
     /// TODO(P1): Add implementation.
     pub fn as_mut_ptr(&mut self) -> *mut u8 {
         todo!("TODO(P1): Add implementation.")
     }
 
+    /// Returns an immutable reference to the page data as a `&[u8]` slice.
     pub fn as_slice(&self) -> &[u8] {
         self.frame.data.as_slice()
     }
 
+    /// Returns a mutable reference to the page data as a `&mut [u8]` slice.
     pub fn as_mut_slice(&mut self) -> &mut [u8] {
         self.frame.data.as_mut_slice()
     }

@@ -1,9 +1,3 @@
-// Date:   Sun May 17 20:29:01 2026
-// Mail:   lunar_ubuntu@qq.com
-// Author: https://github.com/xiaoqixian
-// Date:   Sun May 17 16:12:00 2026
-// Mail:   lunar_ubuntu@qq.com
-// Author: https://github.com/xiaoqixian
 //===----------------------------------------------------------------------===//
 //
 //                         BusTub
@@ -26,6 +20,16 @@ use crate::common::FrameId;
 /// `BufferPoolManager` stores pages of data into. The actual frame data is
 /// stored directly inside `FrameHeader` as a `Vec<u8>` of `BUSTUB_PAGE_SIZE`
 /// bytes.
+///
+/// ---
+///
+/// In a traditional production buffer pool manager, all memory that the
+/// buffer pool manages would be allocated in one large contiguous array and
+/// then divided into page-sized frames. In BusTub, each frame is instead
+/// allocated separately (via its own `Vec<u8>`) so that buffer overflows can
+/// be easily detected by address sanitizer. If frames were contiguous, it
+/// would be very easy to cast a page's data pointer to a larger type and
+/// accidentally overwrite adjacent pages.
 #[allow(dead_code)]
 pub struct FrameHeader {
     /// The frame ID / index of the frame this header represents.
@@ -34,19 +38,24 @@ pub struct FrameHeader {
     /// The number of pins on this frame keeping the page in memory.
     pub(crate) pin_count: usize,
 
-    /// The dirty flag.
+    /// The dirty flag — set to `true` when the page has been modified and
+    /// needs to be flushed to disk.
     pub(crate) is_dirty: bool,
 
     /// The ID of the page currently stored in this frame, or
     /// `INVALID_PAGE_ID` if the frame is empty.
     pub(crate) page_id: PageId,
 
-    /// The actual page data. Protected by `Mutex` for interior mutability.
+    /// The actual page data. Allocated as a `Vec<u8>` of `BUSTUB_PAGE_SIZE`
+    /// bytes so that ASan can detect out-of-bounds writes.
     pub(crate) data: Vec<u8>,
 }
 
 impl FrameHeader {
     /// Creates a new `FrameHeader` for the given frame ID.
+    ///
+    /// The frame is initialized to all zeroes, with `pin_count = 0`,
+    /// `is_dirty = false`, and `page_id = INVALID_PAGE_ID`.
     pub fn new(frame_id: FrameId) -> Self {
         let mut this = FrameHeader {
             frame_id,
@@ -59,8 +68,9 @@ impl FrameHeader {
         this
     }
 
-    /// Resets the frame header to its default state (zeroes data, clears
-    /// pins, marks clean).
+    /// Resets the frame header to its default state: zeroes the page data,
+    /// clears the pin count, marks the frame as clean, and sets the page ID
+    /// to `INVALID_PAGE_ID`.
     pub(crate) fn reset(&mut self) {
         self.data.fill(0);
         self.pin_count = 0;
@@ -68,5 +78,4 @@ impl FrameHeader {
         self.page_id = INVALID_PAGE_ID;
     }
 }
-
 

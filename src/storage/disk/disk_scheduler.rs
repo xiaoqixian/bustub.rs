@@ -1,6 +1,3 @@
-// Date:   Sun May 17 16:12:00 2026
-// Mail:   lunar_ubuntu@qq.com
-// Author: https://github.com/xiaoqixian
 //===----------------------------------------------------------------------===//
 //
 //                         BusTub
@@ -25,7 +22,8 @@ use crate::common::BUSTUB_PAGE_SIZE;
 // ---------------------------------------------------------------------------
 
 /// Trait that mirrors the C++ `DiskManager` interface required by
-/// `DiskScheduler`.
+/// `DiskScheduler`. Any type implementing this trait can serve as a disk
+/// backend (e.g., an in-memory test disk or a file-based disk manager).
 pub trait DiskManager: Send + Sync {
     /// Write a page to the database file.
     fn write_page(&self, page_id: PageId, page_data: &[u8]);
@@ -39,6 +37,9 @@ pub trait DiskManager: Send + Sync {
     fn increase_disk_space(&self, pages: usize);
 
     /// Deallocates a page on disk.
+    ///
+    /// Note: This is a no-op without a more complex data structure to track
+    /// deallocated pages.
     fn delete_page(&self, page_id: PageId);
 }
 
@@ -93,6 +94,9 @@ pub struct DiskScheduler {
     /// Sending end of the MPSC channel. `schedule()` pushes requests here;
     /// the worker thread receives them on the other end. Wrapped in a `Mutex`
     /// so that `DiskScheduler` is `Sync`.
+    ///
+    /// When the `DiskScheduler` is dropped, a `None` sentinel is pushed into
+    /// the queue to signal the background thread to stop.
     request_queue: Mutex<mpsc::Sender<Option<DiskRequest>>>,
 
     /// The background thread responsible for issuing scheduled requests to the
@@ -118,6 +122,8 @@ impl DiskScheduler {
     }
 
     /// Schedules a request for the DiskManager to execute.
+    ///
+    /// * `r` - The request to be scheduled.
     pub fn schedule(&self, r: DiskRequest) {
         self.request_queue
             .lock()
@@ -169,11 +175,18 @@ impl DiskScheduler {
 
     /// Increases the size of the database file to fit the specified number of
     /// pages.
+    ///
+    /// This works like a dynamic array, where the capacity is doubled until
+    /// all pages can fit.
     pub fn increase_disk_space(&self, pages: usize) {
         self.disk_manager.increase_disk_space(pages);
     }
 
     /// Deallocates a page on disk.
+    ///
+    /// Note: You should look at the documentation for `delete_page` in
+    /// `BufferPoolManager` before using this method. Also note: This is a
+    /// no-op without a more complex data structure to track deallocated pages.
     pub fn deallocate_page(&self, page_id: PageId) {
         self.disk_manager.delete_page(page_id);
     }

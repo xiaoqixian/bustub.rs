@@ -1,52 +1,49 @@
-// Date:   Sun May 17 15:32:56 2026
-// Mail:   lunar_ubuntu@qq.com
-// Author: https://github.com/xiaoqixian
 //===----------------------------------------------------------------------===//
 //
 //                         BusTub
 //
-// config.rs
+// mod.rs
 //
-// Identification: src/common/config.rs
+// Identification: src/common/mod.rs
 //
 // Copyright (c) 2015-2019, Carnegie Mellon University Database Group
 //
 //===----------------------------------------------------------------------===//
 
-/// frame id type
+/// Frame identifier type.
 pub type FrameId = i32;
 
-/// page id type
+/// Page identifier type.
 pub type PageId = i32;
 
-/// transaction id type
+/// Transaction identifier type.
 pub type TxnId = i64;
 
-/// log sequence number type
+/// Log sequence number type.
 pub type LSN = i32;
 
-/// slot offset type
+/// Slot offset type.
 pub type SlotOffset = usize;
 
-/// invalid frame id
+/// Sentinel value representing an invalid frame ID.
 pub const INVALID_FRAME_ID: FrameId = -1;
 
-/// invalid page id
+/// Sentinel value representing an invalid page ID.
 pub const INVALID_PAGE_ID: PageId = -1;
 
-/// invalid transaction id
+/// Sentinel value representing an invalid transaction ID.
 pub const INVALID_TXN_ID: TxnId = -1;
 
-/// invalid log sequence number
+/// Sentinel value representing an invalid log sequence number.
 pub const INVALID_LSN: LSN = -1;
 
-/// size of a data page in byte
+/// The size of a data page in bytes (4 KB).
 pub const BUSTUB_PAGE_SIZE: usize = 4096;
 
-/// size of buffer pool
+/// The default number of frames in the buffer pool.
 pub const BUFFER_POOL_SIZE: usize = 128;
 
-/// backward k-distance for lru-k
+/// The default backward k-distance for the LRU-K replacer.
 pub const LRUK_REPLACER_K: usize = 10;
 
 

@@ -1,5 +1,13 @@
-// Date:   Sun May 17 16:11:40 2026
-// Mail:   lunar_ubuntu@qq.com
-// Author: https://github.com/xiaoqixian
+//===----------------------------------------------------------------------===//
+//
+//                         BusTub
+//
+// mod.rs
+//
+// Identification: src/storage/disk/mod.rs
+//
+// Copyright (c) 2015-2024, Carnegie Mellon University Database Group
+//
+//===----------------------------------------------------------------------===//
 
 pub mod disk_scheduler;

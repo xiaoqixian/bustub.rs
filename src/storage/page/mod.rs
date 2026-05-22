@@ -1,10 +1,14 @@
-// Date:   Sun May 17 20:27:07 2026
-// Mail:   lunar_ubuntu@qq.com
-// Author: https://github.com/xiaoqixian
-// Date:   Sun May 17 16:12:00 2026
-// Mail:   lunar_ubuntu@qq.com
-// Author: https://github.com/xiaoqixian
-
-pub mod page_guard;
+//===----------------------------------------------------------------------===//
+//
+//                         BusTub
+//
+// mod.rs
+//
+// Identification: src/storage/page/mod.rs
+//
+// Copyright (c) 2015-2024, Carnegie Mellon University Database Group
+//
+//===----------------------------------------------------------------------===//
 
 pub mod b_plus_tree_page;
+pub mod page_guard;
