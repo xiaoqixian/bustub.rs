@@ -46,4 +46,4 @@ pub const BUFFER_POOL_SIZE: usize = 128;
 /// The default backward k-distance for the LRU-K replacer.
 pub const LRUK_REPLACER_K: usize = 10;
 
-
+pub mod rid;

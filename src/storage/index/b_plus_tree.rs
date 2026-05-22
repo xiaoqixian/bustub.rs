@@ -117,6 +117,10 @@ where
         todo!("TODO(P2): Add implementation.")
     }
 
+    pub fn get_root_page_id(&self) -> PageId {
+        todo!("TODO(P2): Add implementation.")
+    }
+
     /// Helper function: reinterprets a `ReadPageGuard` as a B+Tree page
     /// reference. Uses the `PageMetaData` at the start of the page data to
     /// determine whether the page is a leaf or internal node.
