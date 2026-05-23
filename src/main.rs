@@ -12,6 +12,7 @@
 
 pub mod buffer;
 pub mod common;
+pub mod sql_type;
 pub mod storage;
 
 fn main() {}
