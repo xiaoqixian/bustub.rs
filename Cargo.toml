@@ -1,7 +1,14 @@
 [package]
-name = "cmu-15445-rustlab"
+name = "bustub"
 version = "0.1.0"
 edition = "2024"
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "bustub-shell"
+path = "src/shell.rs"
 
 [dependencies]
 sqlparser = "0.62.0"

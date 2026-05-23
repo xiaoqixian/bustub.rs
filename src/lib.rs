@@ -11,8 +11,8 @@
 //===----------------------------------------------------------------------===//
 
 pub mod buffer;
+pub mod catalog;
 pub mod common;
+pub mod concurrency;
 pub mod sql_type;
 pub mod storage;
-
-fn main() {}
