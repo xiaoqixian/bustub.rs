@@ -10,7 +10,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-pub mod b_plus_tree;
+mod b_plus_tree;
+pub mod index;
 
 #[cfg(test)]
 mod b_plus_tree_tests;

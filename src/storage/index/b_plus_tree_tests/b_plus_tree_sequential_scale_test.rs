@@ -1,6 +1,3 @@
-// Date:   Fri May 22 16:29:59 2026
-// Mail:   lunar_ubuntu@qq.com
-// Author: https://github.com/xiaoqixian
 //===----------------------------------------------------------------------===//
 //
 //                         BusTub
