@@ -19,6 +19,7 @@ use crate::{
         index::b_plus_tree::BPlusTree,
     }
 };
+use super::{IntComparator, int_comparator};
 
 /// Insert sequential keys {1, 2, 3, 4, 5}, then remove {1, 5, 3, 4} and
 /// verify only key 2 remains. Finally remove key 2 and verify root page is
@@ -29,7 +30,7 @@ fn delete_test_no_iterator() {
     let bpm = BufferPoolManager::new(50, disk_manager, LRUK_REPLACER_K);
 
     let page_id = bpm.new_page();
-    let mut tree = BPlusTree::<i64, RID>::new("foo_pk".to_owned(), bpm.clone(), page_id, 2, 3);
+    let mut tree = BPlusTree::<i64, RID, IntComparator>::new("foo_pk".to_owned(), bpm.clone(), page_id, 2, 3, int_comparator);
 
     let keys: Vec<i64> = vec![1, 2, 3, 4, 5];
     for &key in &keys {
@@ -90,12 +91,13 @@ fn sequential_edge_mix_test() {
         let bpm = BufferPoolManager::new(50, disk_manager, LRUK_REPLACER_K);
 
         let page_id = bpm.new_page();
-        let mut tree = BPlusTree::<i64, RID>::new(
+        let mut tree = BPlusTree::<i64, RID, IntComparator>::new(
             "foo_pk".to_owned(),
             bpm.clone(),
             page_id,
             leaf_max_size,
             3,
+            int_comparator,
         );
 
         // Insert some keys

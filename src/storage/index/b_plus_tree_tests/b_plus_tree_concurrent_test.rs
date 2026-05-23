@@ -20,6 +20,7 @@ use crate::{
         index::b_plus_tree::BPlusTree,
     }
 };
+use super::{IntComparator, int_comparator};
 /// Number of iterations for Insert/Delete tests.
 const NUM_ITERS: usize = 50;
 /// Number of iterations for Mix tests.
@@ -31,7 +32,7 @@ const BPM_SIZE: usize = 50;
 // Helper functions: insert / delete / lookup
 // ---------------------------------------------------------------------------
 
-type Tree = BPlusTree<i64, RID>;
+type Tree = BPlusTree<i64, RID, IntComparator>;
 type SharedTree = Arc<Mutex<Tree>>;
 
 /// Insert all keys into the tree (each thread inserts the full set).
@@ -94,7 +95,7 @@ fn concurrent_insert_test_1() {
         let bpm = BufferPoolManager::new(BPM_SIZE, disk_manager, LRUK_REPLACER_K);
 
         let page_id = bpm.new_page();
-        let tree = BPlusTree::<i64, RID>::new("foo_pk".to_owned(), bpm.clone(), page_id, 3, 5);
+        let tree = BPlusTree::<i64, RID, IntComparator>::new("foo_pk".to_owned(), bpm.clone(), page_id, 3, 5, int_comparator);
         let shared_tree = Arc::new(Mutex::new(tree));
 
         let scale_factor: i64 = 100;
@@ -145,7 +146,7 @@ fn concurrent_insert_test_2() {
         let bpm = BufferPoolManager::new(BPM_SIZE, disk_manager, LRUK_REPLACER_K);
 
         let page_id = bpm.new_page();
-        let tree = BPlusTree::<i64, RID>::new("foo_pk".to_owned(), bpm.clone(), page_id, 3, 5);
+        let tree = BPlusTree::<i64, RID, IntComparator>::new("foo_pk".to_owned(), bpm.clone(), page_id, 3, 5, int_comparator);
         let shared_tree = Arc::new(Mutex::new(tree));
 
         let scale_factor: i64 = 1000;
@@ -201,7 +202,7 @@ fn concurrent_delete_test_1() {
         let bpm = BufferPoolManager::new(BPM_SIZE, disk_manager, LRUK_REPLACER_K);
 
         let page_id = bpm.new_page();
-        let mut tree = BPlusTree::<i64, RID>::new("foo_pk".to_owned(), bpm.clone(), page_id, 3, 5);
+        let mut tree = BPlusTree::<i64, RID, IntComparator>::new("foo_pk".to_owned(), bpm.clone(), page_id, 3, 5, int_comparator);
 
         // Sequential insert
         let keys: Vec<i64> = vec![1, 2, 3, 4, 5];
@@ -253,7 +254,7 @@ fn concurrent_delete_test_2() {
         let bpm = BufferPoolManager::new(BPM_SIZE, disk_manager, LRUK_REPLACER_K);
 
         let page_id = bpm.new_page();
-        let mut tree = BPlusTree::<i64, RID>::new("foo_pk".to_owned(), bpm.clone(), page_id, 3, 5);
+        let mut tree = BPlusTree::<i64, RID, IntComparator>::new("foo_pk".to_owned(), bpm.clone(), page_id, 3, 5, int_comparator);
 
         // Sequential insert
         let keys: Vec<i64> = vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
@@ -309,7 +310,7 @@ fn concurrent_mix_test_1() {
         let bpm = BufferPoolManager::new(BPM_SIZE, disk_manager, LRUK_REPLACER_K);
 
         let page_id = bpm.new_page();
-        let mut tree = BPlusTree::<i64, RID>::new("foo_pk".to_owned(), bpm.clone(), page_id, 3, 5);
+        let mut tree = BPlusTree::<i64, RID, IntComparator>::new("foo_pk".to_owned(), bpm.clone(), page_id, 3, 5, int_comparator);
 
         // First, populate with odd keys (these will be deleted)
         let total_keys: i64 = 1000;
@@ -378,7 +379,7 @@ fn concurrent_mix_test_2() {
         let bpm = BufferPoolManager::new(BPM_SIZE, disk_manager, LRUK_REPLACER_K);
 
         let page_id = bpm.new_page();
-        let mut tree = BPlusTree::<i64, RID>::new("foo_pk".to_owned(), bpm.clone(), page_id, 3, 5);
+        let mut tree = BPlusTree::<i64, RID, IntComparator>::new("foo_pk".to_owned(), bpm.clone(), page_id, 3, 5, int_comparator);
 
         let total_keys: i64 = 1000;
         let sieve: i64 = 5;

@@ -21,6 +21,7 @@ use crate::{
         index::b_plus_tree::BPlusTree,
     }
 };
+use super::{IntComparator, int_comparator};
 
 // ---------------------------------------------------------------------------
 // Benchmark helper
@@ -39,12 +40,13 @@ fn b_plus_tree_lock_benchmark(
     let bpm = BufferPoolManager::new(64, disk_manager, LRUK_REPLACER_K);
 
     let page_id = bpm.new_page();
-    let tree = BPlusTree::<i64, RID>::new(
+    let tree = BPlusTree::<i64, RID, IntComparator>::new(
         "foo_pk".to_owned(),
         bpm.clone(),
         page_id,
         leaf_node_size,
         10,
+        int_comparator,
     );
     let shared_tree = Arc::new(Mutex::new(tree));
 

@@ -18,7 +18,7 @@ use crate::{
         page_guard::{ReadPageGuard, WritePageGuard}
     }
 };
-use std::{cmp::Ord, marker::PhantomData, iter::Iterator};
+use std::{cmp::{Ord, Ordering}, iter::Iterator, marker::PhantomData};
 
 /// A B+Tree index that stores key-value pairs.
 ///
@@ -26,29 +26,34 @@ use std::{cmp::Ord, marker::PhantomData, iter::Iterator};
 /// Internal pages store routing keys and child page IDs, while leaf pages store
 /// the actual key-value pairs and linked-list pointers for range scans.
 #[allow(dead_code)]
-pub struct BPlusTree<K, V> {
+pub struct BPlusTree<K, V, C> {
     index_name: String,
     bpm: BufferPoolManager,
     header_page_id: PageId,
     leaf_max_size: usize,
     internal_max_size: usize,
-    _kv_marker: PhantomData<(K, V)>,
+    key_comparator: C,
+    _marker: PhantomData<(K, V)>,
 }
 
 /// An iterator over key-value pairs in a B+Tree.
+#[allow(dead_code)]
 pub struct Iter<'a, K, V> {
     _kv_marker: PhantomData<(&'a (), K, V)>,
 }
 
 /// A mutable iterator over key-value pairs in a B+Tree.
+#[allow(dead_code)]
 pub struct IterMut<'a, K, V> {
     _kv_marker: PhantomData<(&'a (), K, V)>,
 }
 
-impl<K, V> BPlusTree<K, V>
+#[allow(dead_code)]
+impl<K, V, C> BPlusTree<K, V, C>
 where
-    K: Sized + Ord,
-    V: Sized
+    K: Sized,
+    V: Sized,
+    C: Fn(&K, &K) -> Ordering
 {
     #[allow(dead_code)]
     const LEAF_SLOT_CNT: usize = (BUSTUB_PAGE_SIZE - std::mem::size_of::<BPlusTreeLeafPage<K, V>>()) /
@@ -64,6 +69,7 @@ where
         header_page_id: PageId,
         leaf_max_size: usize,
         internal_max_size: usize,
+        key_comparator: C,
     ) -> Self {
         Self {
             index_name,
@@ -71,7 +77,8 @@ where
             header_page_id,
             leaf_max_size,
             internal_max_size,
-            _kv_marker: PhantomData::default(),
+            key_comparator,
+            _marker: PhantomData::default(),
         }
     }
 
@@ -176,7 +183,7 @@ where
 
 impl<'a, K, V> Iterator for Iter<'a, K, V>
 where
-    K: Sized + Ord + 'a,
+    K: Sized + 'a,
     V: Sized + 'a
 {
     type Item = (&'a K, &'a V);
@@ -188,7 +195,7 @@ where
 
 impl<'a, K, V> Iterator for IterMut<'a, K, V>
 where
-    K: Sized + Ord + 'a,
+    K: Sized + 'a,
     V: Sized + 'a
 {
     type Item = (&'a K, &'a mut V);

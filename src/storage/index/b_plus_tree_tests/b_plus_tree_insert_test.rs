@@ -8,6 +8,7 @@ use crate::{
         page::b_plus_tree_page::{BPlusTreeLeafPage, PageMetaData}
     }
 };
+use super::{IntComparator, int_comparator};
 
 #[test]
 fn basic_insert_test() {
@@ -15,7 +16,7 @@ fn basic_insert_test() {
     let bpm = BufferPoolManager::new(50, disk_manager, LRUK_REPLACER_K);
 
     let page_id = bpm.new_page();
-    let mut tree = BPlusTree::<i64, RID>::new("foo_pk".to_owned(), bpm.clone(), page_id, 2, 3);
+    let mut tree = BPlusTree::<i64, RID, IntComparator>::new("foo_pk".to_owned(), bpm.clone(), page_id, 2, 3, int_comparator);
 
     let key = 42i64;
     let value = key & 0xFFFFFFFF;
@@ -46,7 +47,7 @@ fn insert_test_1_no_iterator() {
     let bpm = BufferPoolManager::new(50, disk_manager, LRUK_REPLACER_K);
 
     let page_id = bpm.new_page();
-    let mut tree = BPlusTree::<i64, RID>::new("foo_pk".to_owned(), bpm.clone(), page_id, 2, 3);
+    let mut tree = BPlusTree::<i64, RID, IntComparator>::new("foo_pk".to_owned(), bpm.clone(), page_id, 2, 3, int_comparator);
 
     let keys: Vec<i64> = vec![1, 2, 3, 4, 5];
     for &key in &keys {
@@ -75,7 +76,7 @@ fn insert_test_2() {
     let bpm = BufferPoolManager::new(50, disk_manager, LRUK_REPLACER_K);
 
     let page_id = bpm.new_page();
-    let mut tree = BPlusTree::<i64, RID>::new("foo_pk".to_owned(), bpm.clone(), page_id, 2, 3);
+    let mut tree = BPlusTree::<i64, RID, IntComparator>::new("foo_pk".to_owned(), bpm.clone(), page_id, 2, 3, int_comparator);
 
     let keys: Vec<i64> = vec![5, 4, 3, 2, 1];
     for &key in &keys {
