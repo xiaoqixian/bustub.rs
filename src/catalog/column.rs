@@ -21,9 +21,9 @@ pub struct Column {
     pub(crate) column_type: TypeId,
     /// The size of the column (in bytes). For fixed-length types this is the
     /// type size; for variable-length types this is the specified max length.
-    pub(crate) length: u32,
+    pub(crate) length: usize,
     /// Column offset in the tuple.
-    pub(crate) column_offset: u32,
+    pub(crate) column_offset: usize,
 }
 
 impl Column {
@@ -37,7 +37,7 @@ impl Column {
             column_type != TypeId::Vector,
             "Wrong constructor for VECTOR type."
         );
-        let length = Self::type_size(column_type, 0) as u32;
+        let length = Self::type_size(column_type, 0) as usize;
         Column {
             column_name,
             column_type,
@@ -52,7 +52,7 @@ impl Column {
             column_type == TypeId::Varchar || column_type == TypeId::Vector,
             "Wrong constructor for fixed-size type."
         );
-        let length = Self::type_size(column_type, length) as u32;
+        let length = Self::type_size(column_type, length) as usize;
         Column {
             column_name,
             column_type,
@@ -87,12 +87,12 @@ impl Column {
     }
 
     /// Get the storage size of this column.
-    pub fn get_storage_size(&self) -> u32 {
+    pub fn get_storage_size(&self) -> usize {
         self.length
     }
 
     /// Get the column's offset in the tuple.
-    pub fn get_offset(&self) -> u32 {
+    pub fn get_offset(&self) -> usize {
         self.column_offset
     }
 

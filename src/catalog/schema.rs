@@ -16,20 +16,20 @@ use super::column::Column;
 /// for a table. It is composed of Column objects.
 pub struct Schema {
     /// Fixed-length column size, i.e. the number of bytes used by one tuple.
-    length: u32,
+    length: usize,
     /// All the columns in the schema, inlined and uninlined.
-    columns: Vec<Column>,
+    pub(crate) columns: Vec<Column>,
     /// True if all the columns are inlined, false otherwise.
     tuple_is_inlined: bool,
     /// Indices of all uninlined columns.
-    uninlined_columns: Vec<u32>,
+    uninlined_columns: Vec<usize>,
 }
 
 impl Schema {
     /// Constructs the schema corresponding to the vector of columns,
     /// read left-to-right.
     pub fn new(columns: Vec<Column>) -> Self {
-        let mut curr_offset: u32 = 0;
+        let mut curr_offset = 0usize;
         let mut tuple_is_inlined = true;
         let mut uninlined_columns = Vec::new();
         let mut schema_columns = Vec::with_capacity(columns.len());
@@ -38,14 +38,14 @@ impl Schema {
             // handle uninlined column
             if !column.is_inlined() {
                 tuple_is_inlined = false;
-                uninlined_columns.push(index as u32);
+                uninlined_columns.push(index);
             }
             // set column offset
             column.column_offset = curr_offset;
             if column.is_inlined() {
                 curr_offset += column.get_storage_size();
             } else {
-                curr_offset += size_of::<u32>() as u32;
+                curr_offset += size_of::<usize>();
             }
 
             // add column
@@ -75,8 +75,8 @@ impl Schema {
     }
 
     /// Get a specific column from the schema by index.
-    pub fn get_column(&self, col_idx: u32) -> &Column {
-        &self.columns[col_idx as usize]
+    pub fn get_column(&self, col_idx: usize) -> &Column {
+        &self.columns[col_idx]
     }
 
     /// Look up the index of a column by name. Panics if not found.
@@ -96,13 +96,13 @@ impl Schema {
     }
 
     /// Get the indices of non-inlined columns.
-    pub fn get_unlined_columns(&self) -> &Vec<u32> {
+    pub fn get_unlined_columns(&self) -> &Vec<usize> {
         &self.uninlined_columns
     }
 
     /// Get the number of columns in the schema.
-    pub fn get_column_count(&self) -> u32 {
-        self.columns.len() as u32
+    pub fn get_column_count(&self) -> usize {
+        self.columns.len()
     }
 
     /// Get the number of non-inlined columns.
@@ -111,7 +111,7 @@ impl Schema {
     }
 
     /// Get the number of bytes used by one tuple.
-    pub fn get_inlined_storage_size(&self) -> u32 {
+    pub fn get_inlined_storage_size(&self) -> usize {
         self.length
     }
 

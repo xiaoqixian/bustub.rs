@@ -18,7 +18,7 @@ use crate::{
         page_guard::{ReadPageGuard, WritePageGuard}
     }
 };
-use std::{cmp::{Ord, Ordering}, iter::Iterator, marker::PhantomData};
+use std::{cmp::Ordering, iter::Iterator, marker::PhantomData};
 
 /// A B+Tree index that stores key-value pairs.
 ///

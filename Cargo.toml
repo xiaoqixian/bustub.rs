@@ -11,7 +11,7 @@ name = "bustub-shell"
 path = "src/shell.rs"
 
 [dependencies]
-sqlparser = "0.62.0"
+sqlparser = {version = "0.62.0", features = ["serde"]}
 
 [dev-dependencies]
 rand = "0.8"

@@ -75,11 +75,11 @@ impl Tuple {
         // 1. Calculate the size of the tuple.
         let mut tuple_size = schema.get_inlined_storage_size();
         for &i in schema.get_unlined_columns() {
-            let mut len = values[i as usize].get_storage_size();
+            let mut len = values[i].get_storage_size();
             if len == BUSTUB_VALUE_NULL {
                 len = 0;
             }
-            tuple_size += size_of::<u32>() as u32 + len;
+            tuple_size += size_of::<u32>() + len as usize;
         }
 
         // 2. Allocate memory.
@@ -101,7 +101,7 @@ impl Tuple {
                 if len == BUSTUB_VALUE_NULL {
                     len = 0;
                 }
-                offset += size_of::<u32>() as u32 + len;
+                offset += size_of::<u32>() + len as usize;
             } else {
                 let off = col.get_offset() as usize;
                 values[i as usize].serialize_to(&mut data[off..]);
@@ -159,7 +159,7 @@ impl Tuple {
     }
 
     /// Get the value of a specified column.
-    pub fn get_value(&self, schema: &Schema, column_idx: u32) -> Value {
+    pub fn get_value(&self, schema: &Schema, column_idx: usize) -> Value {
         let column_type = schema.get_column(column_idx).get_type();
         let data_ptr = self.get_data_ptr(schema, column_idx);
         Value::deserialize_from(data_ptr, column_type)
@@ -170,7 +170,7 @@ impl Tuple {
         &self,
         schema: &Schema,
         key_schema: &Schema,
-        key_attrs: &[u32],
+        key_attrs: &[usize],
     ) -> Self {
         let values: Vec<Value> = key_attrs
             .iter()
@@ -180,7 +180,7 @@ impl Tuple {
     }
 
     /// Check if a column value is null.
-    pub fn is_null(&self, schema: &Schema, column_idx: u32) -> bool {
+    pub fn is_null(&self, schema: &Schema, column_idx: usize) -> bool {
         let value = self.get_value(schema, column_idx);
         value.is_null()
     }
@@ -201,7 +201,7 @@ impl Tuple {
     }
 
     /// Get the starting storage address of a specific column's data.
-    fn get_data_ptr(&self, schema: &Schema, column_idx: u32) -> &[u8] {
+    fn get_data_ptr(&self, schema: &Schema, column_idx: usize) -> &[u8] {
         let col = schema.get_column(column_idx);
         if col.is_inlined() {
             let offset = col.get_offset() as usize;

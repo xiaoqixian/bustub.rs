@@ -72,6 +72,10 @@ impl IndexMetadata {
         &self.key_schema
     }
 
+    pub fn clone_key_schema(&self) -> Arc<Schema> {
+        self.key_schema.clone()
+    }
+
     /// Get the number of columns inside index key.
     pub fn get_index_column_count(&self) -> u32 {
         self.key_attrs.len() as u32

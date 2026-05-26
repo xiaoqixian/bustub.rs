@@ -12,6 +12,7 @@
 
 mod b_plus_tree;
 pub mod b_plus_tree_index;
+pub mod generic_key;
 pub mod index;
 
 #[cfg(test)]
