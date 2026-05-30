@@ -10,9 +10,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-pub mod column;
-pub mod schema;
+mod column;
+mod schema;
+mod catalog;
 
 pub use column::Column;
 pub use schema::Schema;
-
+pub use catalog::*;

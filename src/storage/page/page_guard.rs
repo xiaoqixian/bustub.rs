@@ -118,6 +118,10 @@ impl<'a> ReadPageGuard<'a> {
     pub fn is_dirty(&self) -> bool {
         todo!("TODO(P1): Add implementation.")
     }
+
+    pub fn as_ref<T>(&self) -> &T {
+        unsafe { &*(self.as_ptr() as *const T) }
+    }
 }
 
 impl<'a> WritePageGuard<'a> {
@@ -169,4 +173,11 @@ impl<'a> WritePageGuard<'a> {
         todo!("TODO(P1): Add implementation.")
     }
 
+    pub fn as_ref<T>(&self) -> &T {
+        unsafe { &*(self.as_ptr() as *const T) }
+    }
+
+    pub fn as_mut_ref<T>(&mut self) -> &mut T {
+        unsafe { &mut *(self.as_mut_ptr() as *mut T) }
+    }
 }

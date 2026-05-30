@@ -12,3 +12,4 @@
 
 pub mod b_plus_tree_page;
 pub mod page_guard;
+pub mod table_page;
