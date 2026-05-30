@@ -12,7 +12,7 @@
 
 use std::sync::Arc;
 
-use crate::catalog::schema::Schema;
+use crate::catalog::Schema;
 use crate::common::rid::RID;
 use crate::concurrency::Transaction;
 use crate::storage::table::tuple::Tuple;
@@ -31,7 +31,7 @@ pub struct IndexMetadata {
     /// The name of the table on which the index is created.
     table_name: String,
     /// The mapping relation between key schema and tuple schema.
-    key_attrs: Vec<u32>,
+    key_attrs: Vec<usize>,
     /// The schema of the indexed key.
     key_schema: Arc<Schema>,
     /// Is primary key?
@@ -44,7 +44,7 @@ impl IndexMetadata {
         index_name: String,
         table_name: String,
         tuple_schema: &Schema,
-        key_attrs: Vec<u32>,
+        key_attrs: Vec<usize>,
         is_primary_key: bool,
     ) -> Self {
         let key_schema = Arc::new(Schema::copy_schema(tuple_schema, &key_attrs));
@@ -77,12 +77,12 @@ impl IndexMetadata {
     }
 
     /// Get the number of columns inside index key.
-    pub fn get_index_column_count(&self) -> u32 {
-        self.key_attrs.len() as u32
+    pub fn get_index_column_count(&self) -> usize {
+        self.key_attrs.len()
     }
 
     /// Get the mapping relation between indexed columns and base table columns.
-    pub fn get_key_attrs(&self) -> &[u32] {
+    pub fn get_key_attrs(&self) -> &[usize] {
         &self.key_attrs
     }
 
@@ -120,7 +120,7 @@ pub trait Index {
     fn get_metadata(&self) -> &IndexMetadata;
 
     /// Return the number of indexed columns.
-    fn get_index_column_count(&self) -> u32 {
+    fn get_index_column_count(&self) -> usize {
         self.get_metadata().get_index_column_count()
     }
 
@@ -135,7 +135,7 @@ pub trait Index {
     }
 
     /// Return the index key attributes.
-    fn get_key_attrs(&self) -> &[u32] {
+    fn get_key_attrs(&self) -> &[usize] {
         self.get_metadata().get_key_attrs()
     }
 

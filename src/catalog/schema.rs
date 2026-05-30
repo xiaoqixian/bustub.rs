@@ -61,10 +61,10 @@ impl Schema {
     }
 
     /// Create a new Schema by copying a subset of columns from an existing schema.
-    pub fn copy_schema(from: &Schema, attrs: &[u32]) -> Self {
+    pub fn copy_schema(from: &Schema, attrs: &[usize]) -> Self {
         let cols: Vec<Column> = attrs
             .iter()
-            .map(|&i| from.columns[i as usize].clone())
+            .map(|&i| from.columns[i].clone())
             .collect();
         Schema::new(cols)
     }
