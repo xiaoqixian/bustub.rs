@@ -122,12 +122,12 @@ pub struct Catalog {
     /// The next index identifier to be used.
     next_index_oid: AtomicU32,
 
-    bpm: BufferPoolManager,
+    bpm: Arc<BufferPoolManager>,
 }
 
 impl Catalog {
     /// Construct a new Catalog instance.
-    pub fn new(bpm: BufferPoolManager) -> Self {
+    pub fn new(bpm: Arc<BufferPoolManager>) -> Self {
         Catalog {
             tables: HashMap::new(),
             table_names: HashMap::new(),
@@ -157,7 +157,7 @@ impl Catalog {
 
         // Construct the table heap.
         let table = if create_table_heap {
-            TableHeap::new(&self.bpm)
+            TableHeap::new(self.bpm.clone())
         } else {
             TableHeap::create_empty_heap()
         };
@@ -181,6 +181,11 @@ impl Catalog {
     pub fn get_table_by_name(&self, table_name: &str) -> Option<Arc<TableInfo>> {
         let table_oid = self.table_names.get(table_name)?;
         self.tables.get(table_oid).cloned()
+    }
+
+    pub fn get_table_ref_by_name(&self, table_name: &str) -> Option<&TableInfo> {
+        let table_oid = self.table_names.get(table_name)?;
+        self.tables.get(table_oid).map(|v| v.as_ref())
     }
 
     /// Query table metadata by OID.
@@ -234,7 +239,15 @@ impl Catalog {
         };
 
         // Populate the index with all tuples in the table heap.
-        let table_meta = self.get_table_by_name(table_name).unwrap();
+        let table_meta = {
+            match self.table_names.get(table_name) {
+                None => None,
+                Some(table_oid) => {
+                    self.tables.get(table_oid).map(|v| v.as_ref())
+                }
+            }
+        }.expect(format!("table {} not found", table_name).as_str());
+
         let mut iter = table_meta.table.make_iterator();
         while !iter.is_end() {
             let (_meta, tuple) = iter.get_tuple();

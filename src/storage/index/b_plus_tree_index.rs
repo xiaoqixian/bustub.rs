@@ -11,7 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 use std::cmp::Ordering;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use crate::buffer::buffer_pool_manager::BufferPoolManager;
 use crate::common::BUSTUB_PAGE_SIZE;
@@ -39,7 +39,7 @@ pub struct BPlusTreeIndex<K, V, C> {
 
 type GK<const N: usize> = GenericKey<N>;
 
-pub fn new_gk_b_plus_tree_index<const N: usize, V>(metadata: IndexMetadata, bpm: BufferPoolManager)
+pub fn new_gk_b_plus_tree_index<const N: usize, V>(metadata: IndexMetadata, bpm: Arc<BufferPoolManager>)
     -> BPlusTreeIndex<GenericKey<N>, V, impl Fn(&GenericKey<N>, &GenericKey<N>) -> Ordering> 
 {
     // Default leaf node max size.
@@ -67,7 +67,7 @@ pub fn new_gk_b_plus_tree_index<const N: usize, V>(metadata: IndexMetadata, bpm:
 
 pub fn new_gk_b_plus_tree_index_with_sizes<const N: usize, V>(
     metadata: IndexMetadata, 
-    bpm: BufferPoolManager,
+    bpm: Arc<BufferPoolManager>,
     mut leaf_max_size: usize,
     mut internal_max_size: usize,
 ) -> BPlusTreeIndex<GenericKey<N>, V, impl Fn(&GenericKey<N>, &GenericKey<N>) -> Ordering> 

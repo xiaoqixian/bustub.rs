@@ -10,7 +10,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-use crate::catalog::schema::Schema;
+use crate::catalog::Schema;
 use crate::common::rid::RID;
 use crate::sql_type::limits::BUSTUB_VALUE_NULL;
 use crate::sql_type::value::Value;

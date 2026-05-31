@@ -134,7 +134,7 @@ impl<'a> TableIterator<'a> {
 /// with each other matters.
 pub struct TableHeap {
     /// The buffer pool manager used for reading / writing pages.
-    bpm: BufferPoolManager,
+    bpm: Arc<BufferPoolManager>,
     /// The page ID of the first page in this table (set once at construction
     /// and never changed).
     first_page_id: PageId,
@@ -151,7 +151,7 @@ pub struct TableHeap {
 impl TableHeap {
     /// Creates a new `TableHeap` backed by the given buffer pool manager.
     /// A new first page is allocated and initialized.
-    pub fn new(bpm: &BufferPoolManager) -> Self {
+    pub fn new(bpm: Arc<BufferPoolManager>) -> Self {
         let first_page_id = bpm.new_page();
 
         let mut guard = bpm.write_page(first_page_id, AccessType::Unknown);
@@ -160,7 +160,7 @@ impl TableHeap {
         drop(guard);
 
         TableHeap {
-            bpm: bpm.clone(),
+            bpm,
             first_page_id,
             last_page_id: AtomicI32::new(first_page_id),
             latch: Mutex::new(()),
@@ -182,7 +182,7 @@ impl TableHeap {
             fn delete_page(&self, _page_id: PageId) {}
         }
 
-        let bpm = BufferPoolManager::new(1, Arc::new(DummyDiskManager), 1);
+        let bpm = Arc::new(BufferPoolManager::new(1, Arc::new(DummyDiskManager), 1));
         TableHeap {
             bpm,
             first_page_id: INVALID_PAGE_ID,

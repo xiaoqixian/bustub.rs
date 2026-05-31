@@ -18,7 +18,7 @@ use crate::{
         page_guard::{ReadPageGuard, WritePageGuard}
     }
 };
-use std::{cmp::Ordering, iter::Iterator, marker::PhantomData};
+use std::{cmp::Ordering, iter::Iterator, marker::PhantomData, sync::Arc};
 
 /// A B+Tree index that stores key-value pairs.
 ///
@@ -28,7 +28,7 @@ use std::{cmp::Ordering, iter::Iterator, marker::PhantomData};
 #[allow(dead_code)]
 pub struct BPlusTree<K, V, C> {
     index_name: String,
-    bpm: BufferPoolManager,
+    bpm: Arc<BufferPoolManager>,
     header_page_id: PageId,
     leaf_max_size: usize,
     internal_max_size: usize,
@@ -65,7 +65,7 @@ where
     /// Creates a new B+Tree.
     pub fn new(
         index_name: String,
-        bpm: BufferPoolManager,
+        bpm: Arc<BufferPoolManager>,
         header_page_id: PageId,
         leaf_max_size: usize,
         internal_max_size: usize,

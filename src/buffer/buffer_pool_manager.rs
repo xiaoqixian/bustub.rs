@@ -59,12 +59,11 @@ struct BufferPoolManagerCore {
 
 /// A thread-safe, shareable handle to the buffer pool manager.
 ///
-/// Wraps `BufferPoolManagerCore` in `Arc<Mutex<...>>` so that it can be
-/// cloned and shared between threads. The mutex guards all internal state
+/// Wraps `BufferPoolManagerCore` in `Mutex<...>` so that it can be
+/// shared between threads. The mutex guards all internal state
 /// (page table, free list, replacer, etc.).
-#[derive(Clone)]
 pub struct BufferPoolManager {
-    core: Arc<Mutex<BufferPoolManagerCore>>
+    core: Mutex<BufferPoolManagerCore>
 }
 
 impl BufferPoolManager {
@@ -92,7 +91,7 @@ impl BufferPoolManager {
         }
 
         BufferPoolManager {
-            core: Arc::new(Mutex::new(BufferPoolManagerCore {
+            core: Mutex::new(BufferPoolManagerCore {
                 num_frames,
                 next_page_id: AtomicI32::new(0),
                 frames,
@@ -100,7 +99,7 @@ impl BufferPoolManager {
                 free_frames,
                 replacer,
                 disk_scheduler,
-            }))
+            })
         }
     }
 
