@@ -7,4 +7,4 @@ pub(crate) struct PageVersionInfo {
     prev_link: Mutex<HashMap<SlotOffset, UndoLink>>
 }
 
-pub struct TransanctionManager {}
+pub struct TransactionManager {}

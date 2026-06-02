@@ -1,7 +1,7 @@
-pub mod transanction;
+pub mod transaction;
 mod lock_manager;
-mod transanction_manager;
+mod transaction_manager;
 
-pub use transanction::Transanction;
+pub use transaction::Transaction;
 pub use lock_manager::LockManager;
-pub use transanction_manager::TransanctionManager;
+pub use transaction_manager::TransactionManager;
