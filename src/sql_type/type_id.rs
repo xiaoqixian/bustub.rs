@@ -13,7 +13,6 @@
 /// Every possible SQL type ID.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TypeId {
-    Invalid = 0,
     Boolean,
     TinyInt,
     SmallInt,
@@ -22,5 +21,4 @@ pub enum TypeId {
     Decimal,
     Varchar,
     Timestamp,
-    Vector,
 }

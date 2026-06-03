@@ -55,7 +55,6 @@ impl fmt::Display for CmpBool {
 /// Convert a TypeId to its string representation.
 pub fn type_id_to_string(type_id: TypeId) -> String {
     match type_id {
-        TypeId::Invalid => "INVALID".to_string(),
         TypeId::Boolean => "BOOLEAN".to_string(),
         TypeId::TinyInt => "TINYINT".to_string(),
         TypeId::SmallInt => "SMALLINT".to_string(),
@@ -64,7 +63,6 @@ pub fn type_id_to_string(type_id: TypeId) -> String {
         TypeId::Decimal => "DECIMAL".to_string(),
         TypeId::Timestamp => "TIMESTAMP".to_string(),
         TypeId::Varchar => "VARCHAR".to_string(),
-        TypeId::Vector => "VECTOR".to_string(),
     }
 }
 
@@ -75,8 +73,7 @@ pub fn get_type_size(type_id: TypeId) -> u64 {
         TypeId::SmallInt => 2,
         TypeId::Integer => 4,
         TypeId::BigInt | TypeId::Decimal | TypeId::Timestamp => 8,
-        TypeId::Varchar | TypeId::Vector => 0,
-        TypeId::Invalid => 0,
+        TypeId::Varchar => 0,
     }
 }
 
@@ -91,8 +88,6 @@ pub fn get_min_value(type_id: TypeId) -> Value {
         TypeId::Decimal => Value::from_f64(TypeId::Decimal, BUSTUB_DECIMAL_MIN),
         TypeId::Timestamp => Value::from_u64(TypeId::Timestamp, 0),
         TypeId::Varchar => Value::from_string(TypeId::Varchar, ""),
-        TypeId::Vector => Value::from_string(TypeId::Vector, ""),
-        TypeId::Invalid => panic!("Cannot get minimal value for INVALID type"),
     }
 }
 
@@ -107,8 +102,6 @@ pub fn get_max_value(type_id: TypeId) -> Value {
         TypeId::Decimal => Value::from_f64(TypeId::Decimal, BUSTUB_DECIMAL_MAX),
         TypeId::Timestamp => Value::from_u64(TypeId::Timestamp, BUSTUB_TIMESTAMP_MAX),
         TypeId::Varchar => Value::from_bytes(TypeId::Varchar, &[], 0, false),
-        TypeId::Vector => Value::from_bytes(TypeId::Vector, &[], 0, false),
-        TypeId::Invalid => panic!("Cannot get max value for INVALID type"),
     }
 }
 
@@ -117,8 +110,6 @@ pub fn get_type_instance(type_id: TypeId) -> &'static dyn SqlType {
     static INSTANCES: OnceLock<Vec<Box<dyn SqlType>>> = OnceLock::new();
     let instances = INSTANCES.get_or_init(|| {
         vec![
-            // Index 0: INVALID
-            Box::new(InvalidType),
             // Index 1: BOOLEAN
             Box::new(BooleanType::new()),
             // Index 2: TINYINT
@@ -141,117 +132,6 @@ pub fn get_type_instance(type_id: TypeId) -> &'static dyn SqlType {
     });
     let idx = type_id as usize;
     instances[idx].as_ref()
-}
-
-/// A simple invalid type that raises panics for all operations.
-pub struct InvalidType;
-
-impl SqlType for InvalidType {
-    fn get_type_id(&self) -> TypeId {
-        TypeId::Invalid
-    }
-
-    fn get_type_size(&self) -> u64 {
-        0
-    }
-
-    fn is_coercable_from(&self, _type_id: TypeId) -> bool {
-        false
-    }
-
-    fn to_string_id(&self) -> String {
-        type_id_to_string(TypeId::Invalid)
-    }
-
-    fn get_min_value(&self) -> Value {
-        panic!("Cannot get minimal value for INVALID type")
-    }
-
-    fn get_max_value(&self) -> Value {
-        panic!("Cannot get max value for INVALID type")
-    }
-
-    fn compare_equals(&self, _left: &Value, _right: &Value) -> CmpBool {
-        panic!("CompareEquals not implemented for INVALID type")
-    }
-    fn compare_not_equals(&self, _left: &Value, _right: &Value) -> CmpBool {
-        panic!("CompareNotEquals not implemented for INVALID type")
-    }
-    fn compare_less_than(&self, _left: &Value, _right: &Value) -> CmpBool {
-        panic!("CompareLessThan not implemented for INVALID type")
-    }
-    fn compare_less_than_equals(&self, _left: &Value, _right: &Value) -> CmpBool {
-        panic!("CompareLessThanEqual not implemented for INVALID type")
-    }
-    fn compare_greater_than(&self, _left: &Value, _right: &Value) -> CmpBool {
-        panic!("CompareGreaterThan not implemented for INVALID type")
-    }
-    fn compare_greater_than_equals(&self, _left: &Value, _right: &Value) -> CmpBool {
-        panic!("CompareGreaterThanEqual not implemented for INVALID type")
-    }
-
-    fn add(&self, _left: &Value, _right: &Value) -> Value {
-        panic!("Add not implemented for INVALID type")
-    }
-    fn subtract(&self, _left: &Value, _right: &Value) -> Value {
-        panic!("Subtract not implemented for INVALID type")
-    }
-    fn multiply(&self, _left: &Value, _right: &Value) -> Value {
-        panic!("Multiply not implemented for INVALID type")
-    }
-    fn divide(&self, _left: &Value, _right: &Value) -> Value {
-        panic!("Divide not implemented for INVALID type")
-    }
-    fn modulo(&self, _left: &Value, _right: &Value) -> Value {
-        panic!("Modulo not implemented for INVALID type")
-    }
-    fn min_val(&self, _left: &Value, _right: &Value) -> Value {
-        panic!("Min not implemented for INVALID type")
-    }
-    fn max_val(&self, _left: &Value, _right: &Value) -> Value {
-        panic!("Max not implemented for INVALID type")
-    }
-    fn sqrt(&self, _val: &Value) -> Value {
-        panic!("Sqrt not implemented for INVALID type")
-    }
-    fn operate_null(&self, _left: &Value, _right: &Value) -> Value {
-        panic!("OperateNull not implemented for INVALID type")
-    }
-    fn is_zero(&self, _val: &Value) -> bool {
-        panic!("isZero not implemented for INVALID type")
-    }
-
-    fn is_inlined(&self, _val: &Value) -> bool {
-        panic!("IsInlined not implemented for INVALID type")
-    }
-
-    fn to_string_val(&self, _val: &Value) -> String {
-        panic!("ToString not implemented for INVALID type")
-    }
-
-    fn serialize_to(&self, _val: &Value, _storage: &mut [u8]) {
-        panic!("SerializeTo not implemented for INVALID type")
-    }
-
-    fn deserialize_from(&self, _storage: &[u8]) -> Value {
-        panic!("DeserializeFrom not implemented for INVALID type")
-    }
-
-    fn copy(&self, _val: &Value) -> Value {
-        panic!("Copy not implemented for INVALID type")
-    }
-
-    fn cast_as(&self, _val: &Value, _type_id: TypeId) -> Value {
-        panic!("CastAs not implemented for INVALID type")
-    }
-
-    fn get_data<'a>(&self, _val: &'a Value) -> &'a [u8] {
-        panic!("GetData from value not implemented for INVALID type")
-    }
-
-    fn get_storage_size(&self, _val: &Value) -> u32 {
-        panic!("GetStorageSize not implemented for INVALID type")
-    }
 }
 
 /// The base trait for all SQL types.

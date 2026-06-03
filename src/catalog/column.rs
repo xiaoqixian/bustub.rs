@@ -33,10 +33,6 @@ impl Column {
             column_type != TypeId::Varchar,
             "Wrong constructor for VARCHAR type."
         );
-        assert!(
-            column_type != TypeId::Vector,
-            "Wrong constructor for VECTOR type."
-        );
         let length = Self::type_size(column_type, 0) as usize;
         Column {
             column_name,
@@ -49,7 +45,7 @@ impl Column {
     /// Variable-length constructor for creating a Column.
     pub fn new_with_length(column_name: String, column_type: TypeId, length: u32) -> Self {
         assert!(
-            column_type == TypeId::Varchar || column_type == TypeId::Vector,
+            column_type == TypeId::Varchar,
             "Wrong constructor for fixed-size type."
         );
         let length = Self::type_size(column_type, length) as usize;
@@ -103,7 +99,7 @@ impl Column {
 
     /// Check if the column is inlined (i.e., not VARCHAR or VECTOR).
     pub fn is_inlined(&self) -> bool {
-        self.column_type != TypeId::Varchar && self.column_type != TypeId::Vector
+        self.column_type != TypeId::Varchar
     }
 
     /// Return the size in bytes of the type.
@@ -114,8 +110,6 @@ impl Column {
             TypeId::Integer => 4,
             TypeId::BigInt | TypeId::Decimal | TypeId::Timestamp => 8,
             TypeId::Varchar => length as u8,
-            TypeId::Vector => (length * 8) as u8, // 8 bytes per double
-            TypeId::Invalid => panic!("Cannot get size of invalid type"),
         }
     }
 }
@@ -133,9 +127,6 @@ impl Column {
             let mut s = format!("{}:{}", self.column_name, type_id_to_string(self.column_type));
             if self.column_type == TypeId::Varchar {
                 s.push_str(&format!("({})", self.length));
-            }
-            if self.column_type == TypeId::Vector {
-                s.push_str(&format!("({})", self.length / 8));
             }
             return s;
         }
