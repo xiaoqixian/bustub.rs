@@ -1,4 +1,4 @@
-use crate::sql_type::Value;
+use crate::{binder::BindError, sql_type::Value};
 use std::fmt;
 
 //===----------------------------------------------------------------------===//
@@ -235,17 +235,60 @@ impl fmt::Display for BoundAlias {
 // BoundBinaryOp
 //===----------------------------------------------------------------------===//
 
+#[derive(Debug, Clone, Copy)]
+pub enum BoundBinaryOperator {
+    Plus,
+    Minus,
+    Multiply,
+    Divide,
+    Modulo,
+    StringConcat,
+    Gt,
+    Lt,
+    GtEq,
+    LtEq,
+    Spaceship,
+    Eq,
+    NotEq,
+    And,
+    Or,
+}
+
 /// A bound binary operator, e.g., `a+b`.
 #[derive(Debug, Clone)]
 pub struct BoundBinaryOp {
-    pub op_name: String,
+    pub op: BoundBinaryOperator,
     pub larg: Box<BoundExpression>,
     pub rarg: Box<BoundExpression>,
 }
 
 impl fmt::Display for BoundBinaryOp {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "({}{}{})", self.larg, self.op_name, self.rarg)
+        write!(f, "({}{:?}{})", self.larg, self.op, self.rarg)
+    }
+}
+
+impl BoundBinaryOperator {
+    pub fn from(op: &sqlparser::ast::BinaryOperator) -> Result<Self, BindError> {
+        type BiOp = sqlparser::ast::BinaryOperator;
+        match op {
+            BiOp::Plus => Ok(Self::Plus),
+            BiOp::Minus => Ok(Self::Minus),
+            BiOp::Multiply => Ok(Self::Multiply),
+            BiOp::Divide => Ok(Self::Divide),
+            BiOp::Modulo => Ok(Self::Modulo),
+            BiOp::StringConcat => Ok(Self::StringConcat),
+            BiOp::Gt => Ok(Self::Gt),
+            BiOp::Lt => Ok(Self::Lt),
+            BiOp::GtEq => Ok(Self::GtEq),
+            BiOp::LtEq => Ok(Self::LtEq),
+            BiOp::Spaceship => Ok(Self::Spaceship),
+            BiOp::Eq => Ok(Self::Eq),
+            BiOp::NotEq => Ok(Self::NotEq),
+            BiOp::And => Ok(Self::And),
+            BiOp::Or => Ok(Self::Or),
+            _ => Err(BindError::UnsupportedBinaryOperator(format!("{:?}", op)))
+        }
     }
 }
 

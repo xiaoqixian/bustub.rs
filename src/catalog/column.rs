@@ -14,6 +14,7 @@ use crate::sql_type::type_id::TypeId;
 use crate::sql_type::sql_type::type_id_to_string;
 
 /// A Column represents a single column in a table schema.
+#[derive(Clone)]
 pub struct Column {
     /// Column name.
     pub(crate) column_name: String,
@@ -138,16 +139,5 @@ impl Column {
             self.column_offset,
             self.length,
         )
-    }
-}
-
-impl Clone for Column {
-    fn clone(&self) -> Self {
-        Column {
-            column_name: self.column_name.clone(),
-            column_type: self.column_type,
-            length: self.length,
-            column_offset: self.column_offset,
-        }
     }
 }

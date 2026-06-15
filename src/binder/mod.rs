@@ -2,24 +2,121 @@ mod statement;
 mod expression;
 mod table_ref;
 
+use std::cell::Cell;
+use std::fmt;
+
 use sqlparser::ast as sql;
 pub use statement::*;
 pub use expression::*;
 pub use table_ref::*;
 
-use crate::{catalog::{Catalog, Column, IndexType, Schema}, sql_type::TypeId};
+use crate::{
+    catalog::{Catalog, Column, IndexType, Schema},
+    sql_type::{type_id::TypeId},
+};
 
+//===----------------------------------------------------------------------===//
+// BindError
+//===----------------------------------------------------------------------===//
+
+/// Errors that can occur during the binding process.
 pub enum BindError {
+    /// Unsupported SQL data type encountered.
     UnsupportedDataType(sql::DataType),
+    /// Unsupported table name component encountered.
     UnsupportedTableName(sql::ObjectNamePart),
+    /// The specified table was not found in the catalog.
     TableNotFound(String),
+    /// The specified column was not found in the current scope.
+    ColumnNotFound(String),
+    /// The specified column reference is ambiguous.
+    AmbiguousColumnName(String),
+    /// A feature that is not yet implemented.
+    NotImplemented(String),
+    /// A generic binding exception.
+    Exception(String),
+    /// An unsupported expression type.
+    UnsupportedExpr(String),
+
+    UnsupportedTableFactor(String),
+    UnsupportObjectName(String),
+    UnsupportedJoinType(String),
+    UnsupportedJoinConstraint(String),
+    UnsupportedBinaryOperator(String),
+    UnsupportedTableRef(String),
+
+    EmptyTableRef,
+
+    UnsupportedYetSQL(String)
 }
 
+impl fmt::Display for BindError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            BindError::UnsupportedDataType(ty) => {
+                write!(f, "Unsupported data type: {:?}", ty)
+            }
+            BindError::UnsupportedTableName(name) => {
+                write!(f, "Unsupported table name: {:?}", name)
+            }
+            BindError::TableNotFound(name) => write!(f, "Table not found: {}", name),
+            BindError::ColumnNotFound(col) => {
+                write!(f, "Column not found: {}", col)
+            }
+            BindError::AmbiguousColumnName(col) => {
+                write!(f, "Ambiguous column: {}", col)
+            }
+            BindError::NotImplemented(msg) => write!(f, "Not implemented: {}", msg),
+            BindError::Exception(msg) => write!(f, "{}", msg),
+            BindError::UnsupportedExpr(msg) => write!(f, "Unsupported expression: {}", msg),
+            _ => todo!("BindError Display impl")
+        }
+    }
+}
+
+//===----------------------------------------------------------------------===//
+// Binder
+//===----------------------------------------------------------------------===//
+
+/// The binder is responsible for transforming the sqlparser AST into a binder tree
+/// which can be recognized unambiguously by the BusTub planner.
 pub struct Binder<'cat> {
+    /// Catalog reference used during the binding process.
     catalog: &'cat Catalog,
+    /// Universal ID counter for generating unique names for unnamed items.
+    universal_id: Cell<u64>,
+
+    bound_table_ref: Option<Box<TableRef>>,
+    all_table_ref: Vec<Box<TableRef>>
 }
 
 impl<'cat> Binder<'cat> {
+    fn push_table_ref(&mut self, table_ref: Box<TableRef>) {
+        if let Some(t) = self.bound_table_ref.replace(table_ref) {
+           self.all_table_ref.push(t); 
+        }
+    }
+
+    fn pop_table_ref(&mut self) -> Option<Box<TableRef>> {
+        if let None = self.bound_table_ref {
+            return None;
+        }
+        std::mem::replace(&mut self.bound_table_ref, self.all_table_ref.pop())
+    }
+}
+
+impl<'cat> Binder<'cat> {
+    /// Generates a unique universal ID for naming unnamed items (e.g., subqueries).
+    fn next_id(&self) -> u64 {
+        let id = self.universal_id.get();
+        self.universal_id.set(id + 1);
+        id
+    }
+
+    //===----------------------------------------------------------------------===//
+    // Column Definition / CREATE TABLE
+    //===----------------------------------------------------------------------===//
+
     fn bind_column_def(&self, col_def: sql::ColumnDef) -> Result<Column, BindError> {
         match col_def.data_type {
             // Boolean types
@@ -27,53 +124,74 @@ impl<'cat> Binder<'cat> {
                 Ok(Column::new(col_def.name.value, TypeId::Boolean))
             }
             // Tiny integer types
-            sql::DataType::TinyInt(_) | sql::DataType::TinyIntUnsigned(_)
+            sql::DataType::TinyInt(_)
+            | sql::DataType::TinyIntUnsigned(_)
             | sql::DataType::UTinyInt => {
                 Ok(Column::new(col_def.name.value, TypeId::TinyInt))
             }
             // Small integer types
-            sql::DataType::SmallInt(_) | sql::DataType::SmallIntUnsigned(_)
-            | sql::DataType::USmallInt | sql::DataType::Int2(_)
+            sql::DataType::SmallInt(_)
+            | sql::DataType::SmallIntUnsigned(_)
+            | sql::DataType::USmallInt
+            | sql::DataType::Int2(_)
             | sql::DataType::Int2Unsigned(_) => {
                 Ok(Column::new(col_def.name.value, TypeId::SmallInt))
             }
             // Integer types
-            sql::DataType::Int(_) | sql::DataType::Integer(_)
-            | sql::DataType::Int4(_) | sql::DataType::IntUnsigned(_)
-            | sql::DataType::Int4Unsigned(_) | sql::DataType::IntegerUnsigned(_)
-            | sql::DataType::Int32 | sql::DataType::Signed
+            sql::DataType::Int(_)
+            | sql::DataType::Integer(_)
+            | sql::DataType::Int4(_)
+            | sql::DataType::IntUnsigned(_)
+            | sql::DataType::Int4Unsigned(_)
+            | sql::DataType::IntegerUnsigned(_)
+            | sql::DataType::Int32
+            | sql::DataType::Signed
             | sql::DataType::SignedInteger => {
                 Ok(Column::new(col_def.name.value, TypeId::Integer))
             }
             // Big integer types
-            sql::DataType::BigInt(_) | sql::DataType::BigIntUnsigned(_)
-            | sql::DataType::UBigInt | sql::DataType::Int8(_)
-            | sql::DataType::Int8Unsigned(_) | sql::DataType::Int64 => {
+            sql::DataType::BigInt(_)
+            | sql::DataType::BigIntUnsigned(_)
+            | sql::DataType::UBigInt
+            | sql::DataType::Int8(_)
+            | sql::DataType::Int8Unsigned(_)
+            | sql::DataType::Int64 => {
                 Ok(Column::new(col_def.name.value, TypeId::BigInt))
             }
             // Decimal / floating-point types
-            sql::DataType::Decimal(_) | sql::DataType::Dec(_)
-            | sql::DataType::Numeric(_) | sql::DataType::Float(_)
-            | sql::DataType::Float4 | sql::DataType::Float8
-            | sql::DataType::Float32 | sql::DataType::Float64
-            | sql::DataType::Real | sql::DataType::Double(_)
+            sql::DataType::Decimal(_)
+            | sql::DataType::Dec(_)
+            | sql::DataType::Numeric(_)
+            | sql::DataType::Float(_)
+            | sql::DataType::Float4
+            | sql::DataType::Float8
+            | sql::DataType::Float32
+            | sql::DataType::Float64
+            | sql::DataType::Real
+            | sql::DataType::Double(_)
             | sql::DataType::DoublePrecision => {
                 Ok(Column::new(col_def.name.value, TypeId::Decimal))
             }
             // Variable-length character types
-            sql::DataType::Varchar(char_len) | sql::DataType::Char(char_len)
+            sql::DataType::Varchar(char_len)
+            | sql::DataType::Char(char_len)
             | sql::DataType::Character(char_len)
             | sql::DataType::CharacterVarying(char_len)
             | sql::DataType::CharVarying(char_len)
             | sql::DataType::Nvarchar(char_len) => {
                 let length = match char_len {
                     Some(sql::CharacterLength::IntegerLength { length, .. }) => length as u32,
-                    _ => 128, // default length when not specified
+                    _ => 128, // Default length when not specified.
                 };
-                Ok(Column::new_with_length(col_def.name.value, TypeId::Varchar, length))
+                Ok(Column::new_with_length(
+                    col_def.name.value,
+                    TypeId::Varchar,
+                    length,
+                ))
             }
             // Timestamp / date types
-            sql::DataType::Timestamp { .. } | sql::DataType::Date
+            sql::DataType::Timestamp { .. }
+            | sql::DataType::Date
             | sql::DataType::Datetime { .. } => {
                 Ok(Column::new(col_def.name.value, TypeId::Timestamp))
             }
@@ -86,16 +204,24 @@ impl<'cat> Binder<'cat> {
         let name_part = stmt.name.0.into_iter().take(1).next().unwrap();
         let table_name = match name_part {
             sql::ObjectNamePart::Identifier(id) => id.value,
-            x => return Err(BindError::UnsupportedTableName(x))
+            x => return Err(BindError::UnsupportedTableName(x)),
         };
-        let primary_key = stmt.columns.iter()
-            .map(|x| x.options.iter().find_map(|y| match y.option {
-                sql::ColumnOption::PrimaryKey(_) => Some(x.name.value.clone()),
-                _ => None
-            }))
+        let primary_key = stmt
+            .columns
+            .iter()
+            .map(|x| {
+                x.options
+                    .iter()
+                    .find_map(|y| match y.option {
+                        sql::ColumnOption::PrimaryKey(_) => Some(x.name.value.clone()),
+                        _ => None,
+                    })
+            })
             .flatten()
             .collect::<Vec<String>>();
-        let columns = stmt.columns.into_iter()
+        let columns = stmt
+            .columns
+            .into_iter()
             .map(|x| self.bind_column_def(x))
             .collect::<Result<Vec<_>, _>>()?;
         Ok(CreateStatement {
@@ -109,7 +235,6 @@ impl<'cat> Binder<'cat> {
         // Extract the index name from the statement (e.g., "idx" in CREATE INDEX idx ON t(col)).
         let index_name = match stmt.name {
             Some(name) => {
-                // Take the first part of the qualified name.
                 let name_part = name.0.into_iter().next().unwrap();
                 match name_part {
                     sql::ObjectNamePart::Identifier(id) => id.value,
@@ -127,7 +252,9 @@ impl<'cat> Binder<'cat> {
         };
 
         // Look up the table in the catalog to obtain its OID and schema.
-        let table_info = self.catalog.get_table_by_name(&table_name)
+        let table_info = self
+            .catalog
+            .get_table_by_name(&table_name)
             .ok_or_else(|| BindError::TableNotFound(table_name.clone()))?;
 
         // Build the BaseTableRef for the target table.
@@ -178,7 +305,234 @@ impl<'cat> Binder<'cat> {
     }
 }
 
-// bind select impl
-impl<'cat> Binder<'cat> {
+//===----------------------------------------------------------------------===//
+// Bind SELECT Implementation
+//===----------------------------------------------------------------------===//
 
+impl<'cat> Binder<'cat> {
+    pub fn bind_query(&mut self, query: sql::Query) -> Result<SelectStatement, BindError> {
+        if query.with.is_some() {
+            return Err(BindError::UnsupportedYetSQL("Query with WITH is not supported yet".to_owned()));
+        }
+        if query.order_by.is_some() {
+            return Err(BindError::UnsupportedYetSQL("Select with ORDER BY is not supported yet.".to_owned()));
+        }
+        if query.limit_clause.is_some() {
+            return Err(BindError::UnsupportedYetSQL("Select with LIMIT is not supported yet.".to_owned()));
+        }
+        
+        let sel = match query.body.as_ref() {
+            sql::SetExpr::Select(sel) => sel.as_ref(),
+            _ => return Err(BindError::UnsupportedYetSQL("Nested select is not supported yet.".to_owned()))
+        };
+        
+        let table = Box::new(self.bind_from(&sel.from)?);
+        self.push_table_ref(table);
+
+        let table = self.pop_table_ref().unwrap();
+        Ok(SelectStatement {
+            table,
+            select_list: vec![],
+            where_clause: None,
+            group_by: vec![],
+            having: None,
+            limit_count: None,
+            limit_offset: None,
+            sort: vec![],
+            ctes: vec![],
+            is_distinct: false,
+        })
+    }
+
+    pub fn bind_expression(&self, expr: &sql::Expr) -> Result<BoundExpression, BindError> {
+        type Expr = sql::Expr;
+        match expr {
+            Expr::Identifier(ident) => {
+                let col_names = std::slice::from_ref(&ident.value);
+                let table_ref = match self.bound_table_ref.as_ref() {
+                    None => return Err(BindError::EmptyTableRef),
+                    Some(t) => t.as_ref()
+                };
+                match Self::resolve_column(table_ref, &col_names)? {
+                    Some(expr) => Ok(expr),
+                    None => Err(BindError::ColumnNotFound(col_names.join(".")))
+                }
+            },
+            Expr::CompoundIdentifier(idents) => {
+                let col_names = idents.iter().map(|i| i.value.clone()).collect::<Vec<_>>();
+                let table_ref = match self.bound_table_ref.as_ref() {
+                    None => return Err(BindError::EmptyTableRef),
+                    Some(t) => t.as_ref()
+                };
+                match Self::resolve_column(table_ref, &col_names)? {
+                    Some(expr) => Ok(expr),
+                    None => Err(BindError::ColumnNotFound(col_names.join(".")))
+                }
+            },
+            Expr::BinaryOp {left, op, right} => {
+                let larg = Box::new(self.bind_expression(left.as_ref())?);
+                let rarg = Box::new(self.bind_expression(right.as_ref())?);
+                let op = BoundBinaryOperator::from(op)?;
+                Ok(BoundExpression::BoundBinaryOp(BoundBinaryOp {larg, op, rarg}))
+            },
+            _ => Err(BindError::UnsupportedExpr(format!("{:?}", expr)))
+        }
+    }
+
+    pub fn bind_from(&self, tables: &Vec<sql::TableWithJoins>) -> Result<TableRef, BindError> {
+        match tables.len() {
+            0 => Ok(TableRef::Empty),
+            1 => self.bind_table_ref(tables.into_iter().next().unwrap()),
+            _ => {
+                let mut iter = tables.into_iter();
+                let mut result = {
+                    let l = Box::new(self.bind_table_ref(iter.next().unwrap())?);
+                    let r = Box::new(self.bind_table_ref(iter.next().unwrap())?);
+                    TableRef::CrossProductRef(CrossProductRef {left: l, right: r})
+                };
+                for item in iter {
+                    let l = Box::new(result);
+                    let r = Box::new(self.bind_table_ref(item)?);
+                    result = TableRef::CrossProductRef(CrossProductRef {left: l, right: r})
+                }
+                Ok(result)
+            }
+        }
+    }
+
+    pub fn bind_table_ref(&self, table_with_joins: &sql::TableWithJoins) -> Result<TableRef, BindError> {
+        let (table_name, table_alias) = Self::extract_table_fac(&table_with_joins.relation)?;
+        let base_table = self.bind_base_table_ref(table_name, table_alias)?;
+        match table_with_joins.joins.len() {
+            0 => Ok(base_table),
+            _ => {
+                table_with_joins.joins.iter()
+                    .try_fold(base_table, |b, join| self.bind_table_join(b, join))
+            }
+        }
+    }
+
+    fn bind_base_table_ref(&self, table_name: String, table_alias: Option<String>) -> Result<TableRef, BindError> {
+        match self.catalog.get_table_ref_by_name(&table_name) {
+            None => Err(BindError::TableNotFound(table_name)),
+            Some(table_info) => Ok(
+                TableRef::BaseTableRef(BaseTableRef {
+                    table: table_name,
+                    oid: table_info.oid,
+                    alias: table_alias,
+                    schema: table_info.schema.clone()
+                })
+            )
+        }
+    }
+
+    fn resolve_column(table_ref: &TableRef, col_name: &[String]) -> Result<Option<BoundExpression>, BindError> {
+        match table_ref {
+            TableRef::BaseTableRef(base_table_ref) => {
+                Self::resolve_column_ref_from_base_table_ref(base_table_ref, col_name)
+                    .map(|x| x.map(|y| BoundExpression::BoundColumnRef(y)))
+            },
+            TableRef::CrossProductRef(cross_product_ref) => {
+                match Self::resolve_column(cross_product_ref.left.as_ref(), col_name)? {
+                    Some(x) => Ok(Some(x)),
+                    None => Self::resolve_column(cross_product_ref.right.as_ref(), col_name)
+                }
+            },
+            TableRef::JoinRef(join_ref) => {
+                match Self::resolve_column(join_ref.left.as_ref(), col_name)? {
+                    Some(x) => Ok(Some(x)),
+                    None => Self::resolve_column(join_ref.right.as_ref(), col_name)
+                }
+            },
+            _ => Err(BindError::UnsupportedTableRef(format!("{}", table_ref)))
+        }
+    }
+
+    fn resolve_column_ref_from_base_table_ref(table_ref: &BaseTableRef, col_names: &[String]) -> Result<Option<BoundColumnRef>, BindError> {
+        let table_name = table_ref.get_table_name();
+        let col_name = match col_names.len() {
+            1 => {
+                col_names[0].as_str()
+            },
+            _ => {
+                if col_names[0].as_str() == table_name {
+                    col_names[1].as_str()
+                } else {
+                    return Ok(None);
+                }
+            }
+        };
+        if Self::resolve_column_name_from_schema(&table_ref.schema, col_name)? {
+            Ok(Some(BoundColumnRef {
+                col_names: vec![table_name.to_owned(), col_name.to_owned()]
+            }))
+        } else {
+            Ok(None)
+        }
+    }
+
+    fn resolve_column_name_from_schema(schema: &Schema, col_name: &str) -> Result<bool, BindError> {
+        let mut found = false;
+        for col in schema.columns.iter() {
+            if Self::eq_ignore_case(col_name, col.get_name()) {
+                if found {
+                    return Err(BindError::AmbiguousColumnName(col_name.to_owned()));
+                }
+                found = true;
+            }
+        }
+        Ok(found)
+    }
+
+    fn bind_table_join(&self, l_table: TableRef, join: &sql::Join) -> Result<TableRef, BindError> {
+        let (r_table_name, r_table_alias) = Self::extract_table_fac(&join.relation)?;
+        let r_table = Box::new(self.bind_base_table_ref(r_table_name, r_table_alias)?);
+        let (join_type, constraint) = match &join.join_operator {
+            sql::JoinOperator::Left(c) => (JoinType::Left, c),
+            sql::JoinOperator::Right(c) => (JoinType::Right, c),
+            sql::JoinOperator::Inner(c) => (JoinType::Inner, c),
+            sql::JoinOperator::FullOuter(c) => (JoinType::Outer, c),
+            _ => return Err(BindError::UnsupportedJoinType(format!("{:?}", join.join_operator)))
+        };
+        
+        let condition = match constraint {
+            sql::JoinConstraint::On(expr) => self.bind_expression(&expr)?,
+            _ => return Err(BindError::UnsupportedJoinConstraint(format!("{:?}", constraint)))
+        };
+        Ok(TableRef::JoinRef(JoinRef {
+            left: Box::new(l_table),
+            right: r_table,
+            join_type,
+            condition
+        }))
+    }
+
+    fn extract_table_fac(table_fac: &sql::TableFactor) -> Result<(String, Option<String>), BindError> {
+        match table_fac {
+            sql::TableFactor::Table {
+                name,
+                alias,
+                ..
+            } => {
+                Ok((Self::extract_object_name(&name)?, alias.as_ref().map(|x| x.name.value.clone())))
+            },
+            _ => Err(BindError::UnsupportedTableFactor(format!("{:?}", table_fac)))
+        }
+    }
+
+    fn extract_object_name(name: &sql::ObjectName) -> Result<String, BindError> {
+        if name.0.is_empty() || name.0.len() > 1 {
+            return Err(BindError::UnsupportObjectName(format!("{:?}", name)));
+        }
+        match &name.0[0] {
+            sql::ObjectNamePart::Identifier(ident) => Ok(ident.value.clone()),
+            _ => Err(BindError::UnsupportObjectName(format!("{:?}", name)))
+        }
+    }
+
+    fn eq_ignore_case(a: &str, b: &str) -> bool {
+        let a_iter = a.chars().flat_map(|c| c.to_lowercase());
+        let b_iter = b.chars().flat_map(|c| c.to_lowercase());
+        a_iter.eq(b_iter)
+    }
 }

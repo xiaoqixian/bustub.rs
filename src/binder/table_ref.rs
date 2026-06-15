@@ -112,6 +112,15 @@ impl fmt::Display for BaseTableRef {
     }
 }
 
+impl BaseTableRef {
+    pub fn get_table_name(&self) -> &str {
+        match self.alias.as_ref() {
+            Some(a) => a.as_str(),
+            None => self.table.as_str()
+        }
+    }
+}
+
 //===----------------------------------------------------------------------===//
 // CrossProductRef
 //===----------------------------------------------------------------------===//

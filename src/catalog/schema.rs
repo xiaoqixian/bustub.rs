@@ -14,6 +14,7 @@ use super::column::Column;
 
 /// A Schema represents the schema (column types, names, offsets, etc.)
 /// for a table. It is composed of Column objects.
+#[derive(Clone)]
 pub struct Schema {
     /// Fixed-length column size, i.e. the number of bytes used by one tuple.
     length: usize,
