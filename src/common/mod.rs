@@ -48,3 +48,4 @@ pub const LRUK_REPLACER_K: usize = 10;
 
 pub mod rid;
 pub mod bustub_instance;
+mod result_writer;

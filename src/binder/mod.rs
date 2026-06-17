@@ -20,7 +20,9 @@ use crate::{
 //===----------------------------------------------------------------------===//
 
 /// Errors that can occur during the binding process.
+#[derive(Debug)]
 pub enum BindError {
+    UnsupportedStatement(String),
     /// Unsupported SQL data type encountered.
     UnsupportedDataType(sql::DataType),
     /// Unsupported table name component encountered.
@@ -83,6 +85,7 @@ impl fmt::Display for BindError {
 pub struct Binder<'cat> {
     /// Catalog reference used during the binding process.
     catalog: &'cat Catalog,
+
     /// Universal ID counter for generating unique names for unnamed items.
     universal_id: Cell<u64>,
 
@@ -91,6 +94,15 @@ pub struct Binder<'cat> {
 }
 
 impl<'cat> Binder<'cat> {
+    pub fn new(catalog: &'cat Catalog) -> Self {
+        Self {
+            catalog,
+            universal_id: Cell::new(0),
+            bound_table_ref: None,
+            all_table_ref: vec![],
+        }
+    }
+
     fn push_table_ref(&mut self, table_ref: Box<TableRef>) {
         if let Some(t) = self.bound_table_ref.replace(table_ref) {
            self.all_table_ref.push(t); 
@@ -102,6 +114,14 @@ impl<'cat> Binder<'cat> {
             return None;
         }
         std::mem::replace(&mut self.bound_table_ref, self.all_table_ref.pop())
+    }
+
+    pub fn bind_statement(&mut self, stmt: &sql::Statement) -> Result<BoundStatement, BindError> {
+        type Statement = sql::Statement;
+        match stmt {
+            Statement::Query(query) => self.bind_query(query.as_ref()).map(|s| BoundStatement::Select(s)),
+            _ => Err(BindError::UnsupportedStatement(format!("{:?}", stmt)))
+        }
     }
 }
 
@@ -310,7 +330,7 @@ impl<'cat> Binder<'cat> {
 //===----------------------------------------------------------------------===//
 
 impl<'cat> Binder<'cat> {
-    pub fn bind_query(&mut self, query: sql::Query) -> Result<SelectStatement, BindError> {
+    pub fn bind_query(&mut self, query: &sql::Query) -> Result<SelectStatement, BindError> {
         if query.with.is_some() {
             return Err(BindError::UnsupportedYetSQL("Query with WITH is not supported yet".to_owned()));
         }
