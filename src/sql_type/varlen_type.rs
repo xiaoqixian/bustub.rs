@@ -46,7 +46,7 @@ impl SqlType for VarlenType {
         )
     }
     fn to_string_id(&self) -> String { type_id_to_string(self.type_id) }
-    fn get_min_value(&self) -> Value { Value::from_string(TypeId::Varchar, "") }
+    fn get_min_value(&self) -> Value { Value::from_str("") }
     fn get_max_value(&self) -> Value { Value::from_bytes(TypeId::Varchar, &[], 0, false) }
 
     fn get_data<'a>(&self, val: &'a Value) -> &'a [u8] {

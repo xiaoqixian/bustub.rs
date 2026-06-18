@@ -324,7 +324,7 @@ impl Value {
     pub fn from_bytes(type_id: TypeId, data: &[u8], len: u32, manage_data: bool) -> Self {
         let mut v = Value::new(type_id);
         match type_id {
-            TypeId::Varchar | TypeId::Vector => {
+            TypeId::Varchar => {
                 if data.is_empty() {
                     v.raw_value = ValuePayload::VarlenRef;
                     v.size_len = BUSTUB_VALUE_NULL;
@@ -349,44 +349,17 @@ impl Value {
     }
 
     /// Create a VARCHAR value from a string.
-    pub fn from_string(type_id: TypeId, data: &str) -> Self {
-        let mut v = Value::new(type_id);
-        match type_id {
-            TypeId::Varchar => {
-                v.manage_data = true;
-                let len = data.len() as u32 + 1; // +1 for null terminator
-                let mut owned = Vec::with_capacity(len as usize);
-                owned.extend_from_slice(data.as_bytes());
-                owned.push(0); // null-terminated
-                v.raw_value = ValuePayload::Varlen(owned);
-                v.size_len = len;
-            }
-            _ => {
-                panic!("Invalid Type for string Value constructor");
-            }
+    pub fn from_str(data: &str) -> Self {
+        let len = data.len() as u32 + 1; // +1 for null terminator
+        let mut owned = Vec::with_capacity(len as usize);
+        owned.extend_from_slice(data.as_bytes());
+        owned.push(0); // null-terminated
+        Self {
+            raw_value: ValuePayload::Varlen(owned),
+            size_len: len,
+            manage_data: true,
+            sql_type_id: TypeId::Varchar,
         }
-        v
-    }
-
-    /// Create a VECTOR value from a slice of doubles.
-    pub fn from_vec_double(type_id: TypeId, data: &[f64]) -> Self {
-        let mut v = Value::new(type_id);
-        match type_id {
-            TypeId::Vector => {
-                v.manage_data = true;
-                let len = data.len() * 8; // 8 bytes per double
-                let mut owned = Vec::with_capacity(len);
-                for d in data {
-                    owned.extend_from_slice(&d.to_le_bytes());
-                }
-                v.raw_value = ValuePayload::Varlen(owned);
-                v.size_len = len as u32;
-            }
-            _ => {
-                panic!("Invalid Type for vector Value constructor");
-            }
-        }
-        v
     }
 
     // --- Accessors ---

@@ -56,12 +56,7 @@ impl ValueFactory {
 
     /// Create a VARCHAR value from a string.
     pub fn get_varchar_value(value: &str) -> Value {
-        Value::from_string(TypeId::Varchar, value)
-    }
-
-    /// Create a VECTOR value.
-    pub fn get_vector_value(value: &[f64]) -> Value {
-        Value::from_vec_double(TypeId::Vector, value)
+        Value::from_str(value)
     }
 
     /// Create a NULL value of the given type.
@@ -87,7 +82,7 @@ impl ValueFactory {
             TypeId::Integer => Value::from_i32(TypeId::Integer, 0),
             TypeId::BigInt => Value::from_i64(TypeId::BigInt, 0),
             TypeId::Decimal => Value::from_f64(TypeId::Decimal, 0.0),
-            TypeId::Varchar => Value::from_string(TypeId::Varchar, "0"),
+            TypeId::Varchar => Value::from_str("0"),
             _ => panic!("Unknown type for get_zero_value_by_type"),
         }
     }
@@ -354,7 +349,7 @@ impl ValueFactory {
             if value.is_null() {
                 return Value::from_bytes(TypeId::Varchar, &[], 0, false);
             }
-            return Value::from_string(TypeId::Varchar, &value.to_string_val());
+            return Value::from_str(&value.to_string_val());
         }
         panic!(
             "{} is not coercable to VARCHAR.",

@@ -216,7 +216,7 @@ impl SqlType for IntegerType {
             }
             TypeId::Varchar => {
                 if val.is_null() { return Value::from_bytes(TypeId::Varchar, &[], 0, false); }
-                Value::from_string(TypeId::Varchar, &val.to_string_val())
+                Value::from_str(&val.to_string_val())
             }
             _ => panic!("Integer is not coercable to {}", type_id_to_string(type_id)),
         }

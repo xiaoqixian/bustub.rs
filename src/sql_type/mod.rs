@@ -27,11 +27,10 @@ pub mod type_util;
 pub mod value;
 pub mod value_factory;
 pub mod varlen_type;
-pub mod vector_type;
 
 // Re-export commonly used types at the sql_type level.
 pub use sql_type::{get_cmp_bool, get_max_value, get_min_value, get_type_instance,
-                   get_type_size, type_id_to_string, CmpBool, InvalidType, SqlType};
+                   get_type_size, type_id_to_string, CmpBool, SqlType};
 pub use type_id::TypeId;
 pub use value::Value;
 pub use value_factory::ValueFactory;

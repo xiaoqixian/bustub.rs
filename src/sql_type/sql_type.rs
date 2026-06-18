@@ -21,7 +21,6 @@ use super::tinyint_type::TinyintType;
 use super::type_id::TypeId;
 use super::value::Value;
 use super::varlen_type::VarlenType;
-use super::vector_type::VectorType;
 use std::fmt;
 use std::sync::OnceLock;
 
@@ -87,7 +86,7 @@ pub fn get_min_value(type_id: TypeId) -> Value {
         TypeId::BigInt => Value::from_i64(TypeId::BigInt, BUSTUB_INT64_MIN),
         TypeId::Decimal => Value::from_f64(TypeId::Decimal, BUSTUB_DECIMAL_MIN),
         TypeId::Timestamp => Value::from_u64(TypeId::Timestamp, 0),
-        TypeId::Varchar => Value::from_string(TypeId::Varchar, ""),
+        TypeId::Varchar => Value::from_str(""),
     }
 }
 
@@ -126,8 +125,6 @@ pub fn get_type_instance(type_id: TypeId) -> &'static dyn SqlType {
             Box::new(VarlenType::new(TypeId::Varchar)),
             // Index 8: TIMESTAMP
             Box::new(TimestampType::new()),
-            // Index 9: VECTOR
-            Box::new(VectorType::new()),
         ]
     });
     let idx = type_id as usize;
