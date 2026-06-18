@@ -152,7 +152,6 @@ impl Catalog {
     /// for binder tests or when running without a buffer pool).
     pub fn create_table(
         &self,
-        _txn: Option<&Transaction>,
         table_name: &str,
         schema: &Schema,
         create_table_heap: bool,
@@ -205,7 +204,7 @@ impl Catalog {
     /// Only B+Tree index is currently supported.
     pub fn create_index(
         &self,
-        _txn: Option<&Transaction>,
+        txn: Option<&Transaction>,
         index_name: &str,
         table_name: &str,
         schema: &Schema,
@@ -257,7 +256,7 @@ impl Catalog {
         while !iter.is_end() {
             let (_meta, tuple) = iter.get_tuple();
             let index_key = tuple.key_from_tuple(schema, key_schema, key_attrs);
-            index.insert_entry(&index_key, tuple.get_rid(), _txn);
+            index.insert_entry(&index_key, tuple.get_rid(), txn);
             iter.next();
         }
 
