@@ -433,7 +433,7 @@ impl<'cat> Binder<'cat> {
     }
 
     fn bind_base_table_ref(&self, table_name: String, table_alias: Option<String>) -> Result<TableRef, BindError> {
-        match self.catalog.get_table_ref_by_name(&table_name) {
+        match self.catalog.get_table_by_name(&table_name).as_ref() {
             None => Err(BindError::TableNotFound(table_name)),
             Some(table_info) => Ok(
                 TableRef::BaseTableRef(BaseTableRef {

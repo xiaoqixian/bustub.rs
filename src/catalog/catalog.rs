@@ -12,7 +12,7 @@
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 use crate::buffer::buffer_pool_manager::BufferPoolManager;
 use crate::catalog::schema::Schema;
@@ -108,7 +108,7 @@ impl IndexInfo {
 }
 
 /// The Catalog handles table creation, table lookup, index creation, and index lookup.
-pub struct Catalog {
+struct CatalogCore {
     /// Map table identifier -> table metadata.
     tables: HashMap<TableOid, Arc<TableInfo>>,
     /// Map table name -> table identifiers.
@@ -125,10 +125,14 @@ pub struct Catalog {
     bpm: Arc<BufferPoolManager>,
 }
 
+pub struct Catalog {
+    core: RwLock<CatalogCore>
+}
+
 impl Catalog {
     /// Construct a new Catalog instance.
     pub fn new(bpm: Arc<BufferPoolManager>) -> Self {
-        Catalog {
+        let core = CatalogCore {
             tables: HashMap::new(),
             table_names: HashMap::new(),
             next_table_oid: AtomicU32::new(0),
@@ -136,6 +140,9 @@ impl Catalog {
             index_names: HashMap::new(),
             next_index_oid: AtomicU32::new(0),
             bpm,
+        };
+        Catalog {
+            core: RwLock::new(core),
         }
     }
 
@@ -144,53 +151,52 @@ impl Catalog {
     /// When `create_table_heap` is false, an empty table heap is created (used
     /// for binder tests or when running without a buffer pool).
     pub fn create_table(
-        &mut self,
+        &self,
         _txn: Option<&Transaction>,
         table_name: &str,
         schema: &Schema,
         create_table_heap: bool,
     ) -> Option<Arc<TableInfo>> {
+        let mut core = self.core.write().expect("catalog core write lock");
+
         // Reject duplicate table names.
-        if self.table_names.contains_key(table_name) {
+        if core.table_names.contains_key(table_name) {
             return None;
         }
 
         // Construct the table heap.
         let table = if create_table_heap {
-            TableHeap::new(self.bpm.clone())
+            TableHeap::new(core.bpm.clone())
         } else {
             TableHeap::create_empty_heap()
         };
 
         // Fetch the table OID for the new table.
-        let table_oid = self.next_table_oid.fetch_add(1, Ordering::Relaxed);
+        let table_oid = core.next_table_oid.fetch_add(1, Ordering::Relaxed);
 
         // Construct the table information.
         let schema_copy = Schema::new(schema.get_columns().clone());
         let meta = Arc::new(TableInfo::new(schema_copy, table_name.to_string(), table, table_oid));
 
         // Update internal tracking.
-        self.tables.insert(table_oid, meta.clone());
-        self.table_names.insert(table_name.to_string(), table_oid);
-        self.index_names.insert(table_name.to_string(), HashMap::new());
+        core.tables.insert(table_oid, meta.clone());
+        core.table_names.insert(table_name.to_string(), table_oid);
+        core.index_names.insert(table_name.to_string(), HashMap::new());
 
         Some(meta)
     }
 
     /// Query table metadata by name.
     pub fn get_table_by_name(&self, table_name: &str) -> Option<Arc<TableInfo>> {
-        let table_oid = self.table_names.get(table_name)?;
-        self.tables.get(table_oid).cloned()
-    }
-
-    pub fn get_table_ref_by_name(&self, table_name: &str) -> Option<&TableInfo> {
-        let table_oid = self.table_names.get(table_name)?;
-        self.tables.get(table_oid).map(|v| v.as_ref())
+        let core = self.core.read().expect("catalog core read lock");
+        let table_oid = core.table_names.get(table_name)?;
+        core.tables.get(table_oid).cloned()
     }
 
     /// Query table metadata by OID.
     pub fn get_table_by_oid(&self, table_oid: TableOid) -> Option<Arc<TableInfo>> {
-        self.tables.get(&table_oid).cloned()
+        let core = self.core.read().expect("catalog core read lock");
+        core.tables.get(&table_oid).cloned()
     }
 
     /// Create a new B+Tree index on the specified table, populate existing data,
@@ -198,7 +204,7 @@ impl Catalog {
     ///
     /// Only B+Tree index is currently supported.
     pub fn create_index(
-        &mut self,
+        &self,
         _txn: Option<&Transaction>,
         index_name: &str,
         table_name: &str,
@@ -209,15 +215,19 @@ impl Catalog {
         is_primary_key: bool,
         index_type: IndexType,
     ) -> Option<Arc<IndexInfo>> {
+        let mut core = self.core.write().expect("catalog core write lock");
+
         // Reject creation request for nonexistent table.
-        if !self.table_names.contains_key(table_name) {
+        if !core.table_names.contains_key(table_name) {
             return None;
         }
 
         // Determine if the requested index already exists for this table.
-        let table_indexes = self.index_names.get_mut(table_name).unwrap();
-        if table_indexes.contains_key(index_name) {
-            return None;
+        {
+            let table_indexes = core.index_names.get_mut(table_name).unwrap();
+            if table_indexes.contains_key(index_name) {
+                return None;
+            }
         }
 
         // Construct index metadata.
@@ -234,19 +244,14 @@ impl Catalog {
         let index = match index_type {
             IndexType::BPlusTreeIndex => Box::new(new_gk_b_plus_tree_index::<8, RID>(
                 index_meta,
-                self.bpm.clone(),
+                core.bpm.clone(),
             ))
         };
 
         // Populate the index with all tuples in the table heap.
-        let table_meta = {
-            match self.table_names.get(table_name) {
-                None => None,
-                Some(table_oid) => {
-                    self.tables.get(table_oid).map(|v| v.as_ref())
-                }
-            }
-        }.expect(format!("table {} not found", table_name).as_str());
+        let table_oid = *core.table_names.get(table_name).unwrap();
+        let table_meta = core.tables.get(&table_oid).cloned()
+            .expect(format!("table {} not found", table_name).as_str());
 
         let mut iter = table_meta.table.make_iterator();
         while !iter.is_end() {
@@ -257,7 +262,7 @@ impl Catalog {
         }
 
         // Get the next OID for the new index.
-        let index_oid = self.next_index_oid.fetch_add(1, Ordering::Relaxed);
+        let index_oid = core.next_index_oid.fetch_add(1, Ordering::Relaxed);
 
         // Construct index information; IndexInfo takes ownership of the index.
         let key_schema_copy = Schema::new(key_schema.get_columns().clone());
@@ -273,7 +278,8 @@ impl Catalog {
         ));
 
         // Update internal tracking.
-        self.indexes.insert(index_oid, index_info.clone());
+        core.indexes.insert(index_oid, index_info.clone());
+        let table_indexes = core.index_names.get_mut(table_name).unwrap();
         table_indexes.insert(index_name.to_string(), index_oid);
 
         Some(index_info)
@@ -281,9 +287,10 @@ impl Catalog {
 
     /// Get the index by name and table name.
     pub fn get_index_by_name(&self, index_name: &str, table_name: &str) -> Option<Arc<IndexInfo>> {
-        let table = self.index_names.get(table_name)?;
+        let core = self.core.read().expect("catalog core read lock");
+        let table = core.index_names.get(table_name)?;
         let index_oid = table.get(index_name)?;
-        self.indexes.get(index_oid).cloned()
+        core.indexes.get(index_oid).cloned()
     }
 
     /// Get the index by name and table OID.
@@ -292,30 +299,36 @@ impl Catalog {
         index_name: &str,
         table_oid: TableOid,
     ) -> Option<Arc<IndexInfo>> {
-        let table_meta = self.tables.get(&table_oid)?;
-        self.get_index_by_name(index_name, &table_meta.name)
+        let table_name = {
+            let core = self.core.read().expect("catalog core read lock");
+            core.tables.get(&table_oid)?.name.clone()
+        };
+        self.get_index_by_name(index_name, &table_name)
     }
 
     /// Get the index by index OID.
     pub fn get_index_by_oid(&self, index_oid: IndexOid) -> Option<Arc<IndexInfo>> {
-        self.indexes.get(&index_oid).cloned()
+        let core = self.core.read().expect("catalog core read lock");
+        core.indexes.get(&index_oid).cloned()
     }
 
     /// Get all indexes for the table identified by `table_name`.
     pub fn get_table_indexes(&self, table_name: &str) -> Vec<Arc<IndexInfo>> {
-        let table_indexes = match self.index_names.get(table_name) {
+        let core = self.core.read().expect("catalog core read lock");
+        let table_indexes = match core.index_names.get(table_name) {
             Some(v) => v,
             None => return Vec::new(),
         };
 
         table_indexes
             .values()
-            .filter_map(|oid| self.indexes.get(oid).cloned())
+            .filter_map(|oid| core.indexes.get(oid).cloned())
             .collect()
     }
 
     /// Get all table names.
     pub fn get_table_names(&self) -> Vec<String> {
-        self.table_names.keys().cloned().collect()
+        let core = self.core.read().expect("catalog core read lock");
+        core.table_names.keys().cloned().collect()
     }
 }
