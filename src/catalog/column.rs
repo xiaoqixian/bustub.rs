@@ -29,14 +29,14 @@ pub struct Column {
 
 impl Column {
     /// Non-variable-length constructor for creating a Column.
-    pub fn new(column_name: String, column_type: TypeId) -> Self {
+    pub fn new(column_name: &str, column_type: TypeId) -> Self {
         assert!(
             column_type != TypeId::Varchar,
             "Wrong constructor for VARCHAR type."
         );
         let length = Self::type_size(column_type, 0) as usize;
         Column {
-            column_name,
+            column_name: column_name.to_owned(),
             column_type,
             length,
             column_offset: 0,
@@ -44,14 +44,14 @@ impl Column {
     }
 
     /// Variable-length constructor for creating a Column.
-    pub fn new_with_length(column_name: String, column_type: TypeId, length: u32) -> Self {
+    pub fn new_with_length(column_name: &str, column_type: TypeId, length: usize) -> Self {
         assert!(
             column_type == TypeId::Varchar,
             "Wrong constructor for fixed-size type."
         );
         let length = Self::type_size(column_type, length) as usize;
         Column {
-            column_name,
+            column_name: column_name.to_owned(),
             column_type,
             length,
             column_offset: 0,
@@ -59,9 +59,9 @@ impl Column {
     }
 
     /// Replicate a Column with a different name.
-    pub fn new_with_name(column_name: String, column: &Column) -> Self {
+    pub fn new_with_name(column_name: &str, column: &Column) -> Self {
         Column {
-            column_name,
+            column_name: column_name.to_owned(),
             column_type: column.column_type,
             length: column.length,
             column_offset: column.column_offset,
@@ -104,13 +104,13 @@ impl Column {
     }
 
     /// Return the size in bytes of the type.
-    fn type_size(type_id: TypeId, length: u32) -> u8 {
+    fn type_size(type_id: TypeId, length: usize) -> usize {
         match type_id {
             TypeId::Boolean | TypeId::TinyInt => 1,
             TypeId::SmallInt => 2,
             TypeId::Integer => 4,
             TypeId::BigInt | TypeId::Decimal | TypeId::Timestamp => 8,
-            TypeId::Varchar => length as u8,
+            TypeId::Varchar => length,
         }
     }
 }

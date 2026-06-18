@@ -141,13 +141,13 @@ impl<'cat> Binder<'cat> {
         match col_def.data_type {
             // Boolean types
             sql::DataType::Bool | sql::DataType::Boolean => {
-                Ok(Column::new(col_def.name.value, TypeId::Boolean))
+                Ok(Column::new(col_def.name.value.as_str(), TypeId::Boolean))
             }
             // Tiny integer types
             sql::DataType::TinyInt(_)
             | sql::DataType::TinyIntUnsigned(_)
             | sql::DataType::UTinyInt => {
-                Ok(Column::new(col_def.name.value, TypeId::TinyInt))
+                Ok(Column::new(col_def.name.value.as_str(), TypeId::TinyInt))
             }
             // Small integer types
             sql::DataType::SmallInt(_)
@@ -155,7 +155,7 @@ impl<'cat> Binder<'cat> {
             | sql::DataType::USmallInt
             | sql::DataType::Int2(_)
             | sql::DataType::Int2Unsigned(_) => {
-                Ok(Column::new(col_def.name.value, TypeId::SmallInt))
+                Ok(Column::new(col_def.name.value.as_str(), TypeId::SmallInt))
             }
             // Integer types
             sql::DataType::Int(_)
@@ -167,7 +167,7 @@ impl<'cat> Binder<'cat> {
             | sql::DataType::Int32
             | sql::DataType::Signed
             | sql::DataType::SignedInteger => {
-                Ok(Column::new(col_def.name.value, TypeId::Integer))
+                Ok(Column::new(col_def.name.value.as_str(), TypeId::Integer))
             }
             // Big integer types
             sql::DataType::BigInt(_)
@@ -176,7 +176,7 @@ impl<'cat> Binder<'cat> {
             | sql::DataType::Int8(_)
             | sql::DataType::Int8Unsigned(_)
             | sql::DataType::Int64 => {
-                Ok(Column::new(col_def.name.value, TypeId::BigInt))
+                Ok(Column::new(col_def.name.value.as_str(), TypeId::BigInt))
             }
             // Decimal / floating-point types
             sql::DataType::Decimal(_)
@@ -190,7 +190,7 @@ impl<'cat> Binder<'cat> {
             | sql::DataType::Real
             | sql::DataType::Double(_)
             | sql::DataType::DoublePrecision => {
-                Ok(Column::new(col_def.name.value, TypeId::Decimal))
+                Ok(Column::new(col_def.name.value.as_str(), TypeId::Decimal))
             }
             // Variable-length character types
             sql::DataType::Varchar(char_len)
@@ -200,11 +200,11 @@ impl<'cat> Binder<'cat> {
             | sql::DataType::CharVarying(char_len)
             | sql::DataType::Nvarchar(char_len) => {
                 let length = match char_len {
-                    Some(sql::CharacterLength::IntegerLength { length, .. }) => length as u32,
+                    Some(sql::CharacterLength::IntegerLength { length, .. }) => length as usize,
                     _ => 128, // Default length when not specified.
                 };
                 Ok(Column::new_with_length(
-                    col_def.name.value,
+                    col_def.name.value.as_str(),
                     TypeId::Varchar,
                     length,
                 ))
@@ -213,7 +213,7 @@ impl<'cat> Binder<'cat> {
             sql::DataType::Timestamp { .. }
             | sql::DataType::Date
             | sql::DataType::Datetime { .. } => {
-                Ok(Column::new(col_def.name.value, TypeId::Timestamp))
+                Ok(Column::new(col_def.name.value.as_str(), TypeId::Timestamp))
             }
             // Unsupported data type
             ty => Err(BindError::UnsupportedDataType(ty)),

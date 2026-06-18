@@ -1,10 +1,11 @@
 use std::sync::{Arc, Mutex};
 
 use crate::{
-    binder::{Binder, BoundStatement}, buffer::buffer_pool_manager::BufferPoolManager, catalog::Catalog, concurrency::{LockManager, Transaction, TransactionManager}, execution::{execution_engine::ExecutionEngine, executor_context::ExecutorContext}, optimizer::Optimizer, planner::Planner, storage::disk::disk_scheduler::DiskManager
+    binder::{Binder, BoundStatement}, buffer::buffer_pool_manager::BufferPoolManager, catalog::Catalog, common::errors::BustubError, concurrency::{LockManager, Transaction, TransactionManager}, execution::{execution_engine::ExecutionEngine, executor_context::ExecutorContext, mock_scan_executor::MOCK_TABLE_LIST}, optimizer::Optimizer, planner::Planner, storage::disk::disk_scheduler::DiskManager
 };
 use super::result_writer::ResultWriter;
 
+#[allow(dead_code)]
 pub struct BustubInstance {
     pub(crate) disk_maanger: Box<dyn DiskManager>,
     pub(crate) bpm: Arc<BufferPoolManager>,
@@ -15,28 +16,28 @@ pub struct BustubInstance {
 }
 
 impl BustubInstance {
-    pub fn execute_sql<W: ResultWriter>(&mut self, sql: &str, writer: &mut W) -> Result<bool, String> {
+    pub fn execute_sql<W: ResultWriter>(&mut self, sql: &str, writer: &mut W) -> Result<bool, BustubError> {
         let (mut txn, is_local_txn) = match self.curr_txn.take() {
             Some(t) => (t, false),
-            None => (self.txn_manager.new_txn(), true)
+            None => (self.txn_manager.new_txn()?, true)
         };
         match self.execute_sql_txn(sql, writer, Some(&mut txn)) {
             Ok(x) => {
                 if is_local_txn {
-                    self.txn_manager.commit_txn(&txn);
+                    self.txn_manager.commit_txn(&txn)?;
                 } else {
                     self.curr_txn = Some(txn);
                 }
                 Ok(x)
             },
             Err(e) => {
-                self.txn_manager.abort_txn(&txn);
+                self.txn_manager.abort_txn(&txn)?;
                 Err(e)
             }
         }
     }
 
-    pub fn execute_sql_txn<W: ResultWriter>(&mut self, sql: &str, writer: &mut W, _txn: Option<&mut Transaction>) -> Result<bool, String> {
+    pub fn execute_sql_txn<W: ResultWriter>(&mut self, sql: &str, writer: &mut W, _txn: Option<&mut Transaction>) -> Result<bool, BustubError> {
         if let Some('\\') = sql.chars().next() {
             return match sql {
                 "\\dt" => {
@@ -61,7 +62,7 @@ impl BustubInstance {
                         self.cmd_txn(params, writer);
                         Ok(true)
                     } else {
-                        Err(format!("unsupported internal command: {}", sql))
+                        Err(BustubError::Message(format!("unsupported internal command: {}", sql)))
                     }
                 }
             };
@@ -122,4 +123,5 @@ impl BustubInstance {
     fn cmd_txn<W: ResultWriter>(&self, _params: Vec<&str>, _writer: &mut W) {
         todo!("cmd_dbg_txn")
     }
+
 }
