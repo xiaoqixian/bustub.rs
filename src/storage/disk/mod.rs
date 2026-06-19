@@ -11,4 +11,5 @@
 //===----------------------------------------------------------------------===//
 
 pub mod disk_scheduler;
+pub mod hard_disk_manager;
 pub(crate) mod disk_manager_memory;
