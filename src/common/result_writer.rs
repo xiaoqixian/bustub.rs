@@ -4,7 +4,27 @@ pub trait ResultWriter {
 }
 
 pub struct TableWriter {
-    table: comfy_table::Table
+    table: comfy_table::Table,
+}
+
+impl TableWriter {
+    /// Creates a new empty `TableWriter`.
+    pub fn new() -> Self {
+        TableWriter {
+            table: comfy_table::Table::new(),
+        }
+    }
+
+    /// Converts the table to its string representation.
+    pub fn to_string(&self) -> String {
+        self.table.to_string()
+    }
+}
+
+impl Default for TableWriter {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl ResultWriter for TableWriter {

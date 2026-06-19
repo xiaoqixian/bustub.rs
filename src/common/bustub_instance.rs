@@ -1,21 +1,65 @@
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use crate::{
-    binder::{Binder, BoundStatement}, buffer::buffer_pool_manager::BufferPoolManager, catalog::Catalog, common::errors::BustubError, concurrency::{LockManager, Transaction, TransactionManager}, execution::{execution_engine::ExecutionEngine, executor_context::ExecutorContext, mock_scan_executor::MOCK_TABLE_LIST}, optimizer::Optimizer, planner::Planner, storage::disk::disk_scheduler::DiskManager
+    binder::Binder, buffer::buffer_pool_manager::BufferPoolManager, catalog::Catalog, common::errors::BustubError, concurrency::{LockManager, Transaction, TransactionManager}, execution::{execution_engine::ExecutionEngine, executor_context::ExecutorContext, mock_scan_executor::{MOCK_TABLE_LIST, get_mock_table_schema_of}}, optimizer::Optimizer, planner::Planner, storage::disk::disk_scheduler::DiskManager
 };
 use super::result_writer::ResultWriter;
 
 #[allow(dead_code)]
 pub struct BustubInstance {
     pub(crate) disk_maanger: Box<dyn DiskManager>,
-    pub(crate) bpm: Arc<BufferPoolManager>,
+    pub(crate) bpm: Option<Arc<BufferPoolManager>>,
     pub(crate) lock_manager: LockManager,
     pub(crate) txn_manager: TransactionManager,
     pub(crate) catalog: Catalog,
     curr_txn: Option<Transaction>,
+    managed_txn_mode: bool,
 }
 
 impl BustubInstance {
+    /// Create a new `BustubInstance` with the given database file path.
+    ///
+    /// This initializes an in-memory disk manager, a buffer pool manager,
+    /// a lock manager, a transaction manager, and a catalog.
+    pub fn new(_db_file: &str) -> Self {
+        use crate::buffer::buffer_pool_manager::BufferPoolManager;
+        use crate::catalog::Catalog;
+        use crate::common::{BUFFER_POOL_SIZE, LRUK_REPLACER_K};
+        use crate::concurrency::LockManager;
+        use crate::concurrency::TransactionManager;
+        use crate::storage::disk::disk_manager_memory::DiskManagerMemory;
+        use crate::storage::disk::disk_scheduler::DiskManager;
+
+        // Create the in-memory disk manager (shared between the struct and BPM).
+        let disk_manager = Arc::new(DiskManagerMemory::new()) as Arc<dyn DiskManager>;
+        // Create a separate disk manager instance for the struct's own field.
+        let disk_manager_for_struct = Box::new(DiskManagerMemory::new()) as Box<dyn DiskManager>;
+
+        // Initialize the buffer pool manager.
+        let bpm = Arc::new(BufferPoolManager::new(
+            BUFFER_POOL_SIZE,
+            disk_manager,
+            LRUK_REPLACER_K,
+        ));
+
+        // Initialize the catalog with the buffer pool manager.
+        let catalog = Catalog::new(bpm.clone());
+
+        BustubInstance {
+            disk_maanger: disk_manager_for_struct,
+            bpm: Some(bpm),
+            lock_manager: LockManager {},
+            txn_manager: TransactionManager {},
+            catalog,
+            curr_txn: None,
+            managed_txn_mode: false,
+        }
+    }
+
+    pub fn enable_managed_txn_mode(&mut self) {
+        self.managed_txn_mode = true;
+    }
+
     pub fn execute_sql<W: ResultWriter>(&mut self, sql: &str, writer: &mut W) -> Result<bool, BustubError> {
         let (mut txn, is_local_txn) = match self.curr_txn.take() {
             Some(t) => (t, false),
@@ -124,4 +168,20 @@ impl BustubInstance {
         todo!("cmd_dbg_txn")
     }
 
+}
+
+impl BustubInstance {
+    pub fn create_mock_table(&self) -> Result<(), BustubError> {
+        for &table_name in MOCK_TABLE_LIST {
+            let schema = get_mock_table_schema_of(table_name)?;
+            if let None = self.catalog.create_table(table_name, &schema, false) {
+                return Err(BustubError::Message(format!("table {} exists", table_name)));
+            }
+        }
+        Ok(())
+    }
+
+    pub fn current_managed_txn(&self) -> Option<&Transaction> {
+        self.curr_txn.as_ref()
+    }
 }

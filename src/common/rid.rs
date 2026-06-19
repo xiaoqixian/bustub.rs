@@ -5,7 +5,7 @@ use crate::common::{INVALID_PAGE_ID, PageId};
 /// A RID consists of:
 /// - page id
 /// - slot number inside the page
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct RID {
     page_id: PageId,
     slot_num: u32,

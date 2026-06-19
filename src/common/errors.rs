@@ -1,5 +1,6 @@
 use crate::binder::BindError;
 
+#[derive(Debug)]
 pub enum BustubError {
     BindError(BindError),
     Message(String),

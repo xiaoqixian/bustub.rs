@@ -16,10 +16,10 @@ use crate::sql_type::limits::BUSTUB_VALUE_NULL;
 use crate::sql_type::value::Value;
 
 /// Timestamp type used in tuple metadata.
-pub type TimestampT = i64;
+pub type TimeStamp = i64;
 
 /// Invalid timestamp constant.
-pub const INVALID_TS: TimestampT = -1;
+pub const INVALID_TS: TimeStamp = -1;
 
 /// The size of TupleMeta in bytes (16 bytes: 8 for ts + 1 for bool + padding).
 pub const TUPLE_META_SIZE: usize = 16;
@@ -29,7 +29,7 @@ pub const TUPLE_META_SIZE: usize = 16;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TupleMeta {
     /// The timestamp / transaction ID of this tuple.
-    pub ts: TimestampT,
+    pub ts: TimeStamp,
     /// Marks whether this tuple is marked removed from the table heap.
     pub is_deleted: bool,
 }
