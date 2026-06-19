@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::{
-    binder::Binder, buffer::buffer_pool_manager::BufferPoolManager, catalog::Catalog, common::errors::BustubError, concurrency::{LockManager, Transaction, TransactionManager}, execution::{execution_engine::ExecutionEngine, executor_context::ExecutorContext, mock_scan_executor::{MOCK_TABLE_LIST, get_mock_table_schema_of}}, optimizer::Optimizer, planner::Planner, storage::disk::disk_scheduler::DiskManager
+    binder::Binder, buffer::buffer_pool_manager::BufferPoolManager, catalog::Catalog, common::errors::BustubError, concurrency::{LockManager, Transaction, TransactionManager}, execution::{execution_engine::ExecutionEngine, executor_context::ExecutorContext, mock_scan_executor::{MOCK_TABLE_LIST, get_mock_table_schema_of}}, optimizer::Optimizer, planner::Planner
 };
 use super::result_writer::ResultWriter;
 
@@ -11,7 +11,7 @@ pub struct BustubInstance {
     pub(crate) lock_manager: LockManager,
     pub(crate) txn_manager: TransactionManager,
     pub(crate) catalog: Catalog,
-    curr_txn: Option<Transaction>,
+    curr_txn: Option<Arc<Transaction>>,
     managed_txn_mode: bool,
 }
 
@@ -48,7 +48,7 @@ impl BustubInstance {
         Ok(BustubInstance {
             bpm: Some(bpm),
             lock_manager: LockManager {},
-            txn_manager: TransactionManager {},
+            txn_manager: TransactionManager::new(),
             catalog,
             curr_txn: None,
             managed_txn_mode: false,
@@ -94,7 +94,7 @@ impl BustubInstance {
             Some(t) => (t, false),
             None => (self.txn_manager.new_txn()?, true)
         };
-        match self.execute_sql_txn(sql, writer, Some(&mut txn)) {
+        match self.execute_sql_txn(sql, writer, Some(&txn)) {
             Ok(x) => {
                 if is_local_txn {
                     self.txn_manager.commit_txn(&txn)?;
@@ -110,7 +110,7 @@ impl BustubInstance {
         }
     }
 
-    pub fn execute_sql_txn<W: ResultWriter>(&mut self, sql: &str, writer: &mut W, _txn: Option<&mut Transaction>) -> Result<bool, BustubError> {
+    pub fn execute_sql_txn<W: ResultWriter>(&mut self, sql: &str, writer: &mut W, _txn: Option<&Transaction>) -> Result<bool, BustubError> {
         let exec_engine = ExecutionEngine {};
         let mut binder = Binder::new(&self.catalog);
         let dialect = sqlparser::dialect::GenericDialect {};
@@ -203,6 +203,6 @@ impl BustubInstance {
     }
 
     pub fn current_managed_txn(&self) -> Option<&Transaction> {
-        self.curr_txn.as_ref()
+        self.curr_txn.as_deref()
     }
 }

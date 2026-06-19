@@ -49,7 +49,7 @@ pub struct UndoLink {
     /// Previous version can be found in which txn.
     pub prev_txn: TxnId,
     /// The log index of the previous version in `prev_txn`.
-    pub prev_log_idx: i32,
+    pub prev_log_idx: usize,
 }
 
 impl UndoLink {
@@ -190,7 +190,7 @@ impl Transaction {
         inner.undo_logs.push(log);
         UndoLink {
             prev_txn: self.txn_id,
-            prev_log_idx: (inner.undo_logs.len() - 1) as i32,
+            prev_log_idx: inner.undo_logs.len() - 1,
         }
     }
 
