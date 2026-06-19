@@ -13,6 +13,7 @@ path = "src/shell.rs"
 [dependencies]
 comfy-table = "7.2.2"
 rand = "0.8"
+rustyline = "18.0.0"
 sqlparser = {version = "0.62.0", features = ["serde"]}
 
 [dev-dependencies]
