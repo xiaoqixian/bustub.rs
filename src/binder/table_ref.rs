@@ -238,6 +238,3 @@ impl fmt::Display for SubqueryRef {
         )
     }
 }
-
-/// Alias for a vector of subquery refs, commonly used for CTE lists.
-pub type CTEList = Vec<SubqueryRef>;

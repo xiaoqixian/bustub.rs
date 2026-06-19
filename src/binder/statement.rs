@@ -26,6 +26,7 @@ use super::TableRef;
 //===----------------------------------------------------------------------===//
 
 /// Options for EXPLAIN statement, used as bit flags.
+#[allow(dead_code)]
 pub enum ExplainOptions {
     /// Show binder results.
     Binder = 1,

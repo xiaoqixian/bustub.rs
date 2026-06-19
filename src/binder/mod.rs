@@ -87,6 +87,7 @@ pub struct Binder<'cat> {
     catalog: &'cat Catalog,
 
     /// Universal ID counter for generating unique names for unnamed items.
+    #[allow(dead_code)]
     universal_id: Cell<u64>,
 
     bound_table_ref: Option<Box<TableRef>>,
@@ -125,6 +126,7 @@ impl<'cat> Binder<'cat> {
     }
 }
 
+#[allow(dead_code)]
 impl<'cat> Binder<'cat> {
     /// Generates a unique universal ID for naming unnamed items (e.g., subqueries).
     fn next_id(&self) -> u64 {

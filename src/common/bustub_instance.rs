@@ -90,7 +90,7 @@ impl BustubInstance {
             };
         }
 
-        let (mut txn, is_local_txn) = match self.curr_txn.take() {
+        let (txn, is_local_txn) = match self.curr_txn.take() {
             Some(t) => (t, false),
             None => (self.txn_manager.new_txn()?, true)
         };

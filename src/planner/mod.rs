@@ -1,5 +1,6 @@
 use crate::{binder::BoundStatement, catalog::Catalog, execution::plans::PlanNode};
 
+#[allow(dead_code)]
 pub struct Planner<'cat> {
     catalog: &'cat Catalog,
 }

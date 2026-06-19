@@ -1,5 +1,6 @@
 use crate::{catalog::Catalog, execution::plans::PlanNode};
 
+#[allow(dead_code)]
 pub struct Optimizer<'cat> {
     catalog: &'cat Catalog,
     force_starter_rule: bool,
