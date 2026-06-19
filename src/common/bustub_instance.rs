@@ -7,7 +7,6 @@ use super::result_writer::ResultWriter;
 
 #[allow(dead_code)]
 pub struct BustubInstance {
-    pub(crate) disk_maanger: Box<dyn DiskManager>,
     pub(crate) bpm: Option<Arc<BufferPoolManager>>,
     pub(crate) lock_manager: LockManager,
     pub(crate) txn_manager: TransactionManager,
@@ -21,19 +20,20 @@ impl BustubInstance {
     ///
     /// This initializes an in-memory disk manager, a buffer pool manager,
     /// a lock manager, a transaction manager, and a catalog.
-    pub fn new(_db_file: &str) -> Self {
+    pub fn new(db_file: &str) -> Result<Self, BustubError> {
         use crate::buffer::buffer_pool_manager::BufferPoolManager;
         use crate::catalog::Catalog;
         use crate::common::{BUFFER_POOL_SIZE, LRUK_REPLACER_K};
         use crate::concurrency::LockManager;
         use crate::concurrency::TransactionManager;
-        use crate::storage::disk::disk_manager_memory::DiskManagerMemory;
+        use crate::storage::disk::hard_disk_manager::HardDiskManager;
         use crate::storage::disk::disk_scheduler::DiskManager;
 
         // Create the in-memory disk manager (shared between the struct and BPM).
-        let disk_manager = Arc::new(DiskManagerMemory::new()) as Arc<dyn DiskManager>;
-        // Create a separate disk manager instance for the struct's own field.
-        let disk_manager_for_struct = Box::new(DiskManagerMemory::new()) as Box<dyn DiskManager>;
+        let disk_manager = Arc::new({
+            HardDiskManager::new(db_file)
+                .map_err(|e| format!("{}", e))?
+        }) as Arc<dyn DiskManager>;
 
         // Initialize the buffer pool manager.
         let bpm = Arc::new(BufferPoolManager::new(
@@ -45,15 +45,14 @@ impl BustubInstance {
         // Initialize the catalog with the buffer pool manager.
         let catalog = Catalog::new(bpm.clone());
 
-        BustubInstance {
-            disk_maanger: disk_manager_for_struct,
+        Ok(BustubInstance {
             bpm: Some(bpm),
             lock_manager: LockManager {},
             txn_manager: TransactionManager {},
             catalog,
             curr_txn: None,
             managed_txn_mode: false,
-        }
+        })
     }
 
     pub fn enable_managed_txn_mode(&mut self) {
@@ -61,27 +60,6 @@ impl BustubInstance {
     }
 
     pub fn execute_sql<W: ResultWriter>(&mut self, sql: &str, writer: &mut W) -> Result<bool, BustubError> {
-        let (mut txn, is_local_txn) = match self.curr_txn.take() {
-            Some(t) => (t, false),
-            None => (self.txn_manager.new_txn()?, true)
-        };
-        match self.execute_sql_txn(sql, writer, Some(&mut txn)) {
-            Ok(x) => {
-                if is_local_txn {
-                    self.txn_manager.commit_txn(&txn)?;
-                } else {
-                    self.curr_txn = Some(txn);
-                }
-                Ok(x)
-            },
-            Err(e) => {
-                self.txn_manager.abort_txn(&txn)?;
-                Err(e)
-            }
-        }
-    }
-
-    pub fn execute_sql_txn<W: ResultWriter>(&mut self, sql: &str, writer: &mut W, _txn: Option<&mut Transaction>) -> Result<bool, BustubError> {
         if let Some('\\') = sql.chars().next() {
             return match sql {
                 "\\dt" => {
@@ -112,6 +90,27 @@ impl BustubInstance {
             };
         }
 
+        let (mut txn, is_local_txn) = match self.curr_txn.take() {
+            Some(t) => (t, false),
+            None => (self.txn_manager.new_txn()?, true)
+        };
+        match self.execute_sql_txn(sql, writer, Some(&mut txn)) {
+            Ok(x) => {
+                if is_local_txn {
+                    self.txn_manager.commit_txn(&txn)?;
+                } else {
+                    self.curr_txn = Some(txn);
+                }
+                Ok(x)
+            },
+            Err(e) => {
+                self.txn_manager.abort_txn(&txn)?;
+                Err(e)
+            }
+        }
+    }
+
+    pub fn execute_sql_txn<W: ResultWriter>(&mut self, sql: &str, writer: &mut W, _txn: Option<&mut Transaction>) -> Result<bool, BustubError> {
         let exec_engine = ExecutionEngine {};
         let mut binder = Binder::new(&self.catalog);
         let dialect = sqlparser::dialect::GenericDialect {};
@@ -148,16 +147,38 @@ impl BustubInstance {
         Ok(false)
     }
 
-    fn cmd_display_tables<W: ResultWriter>(&self, _writer: &mut W) {
-        todo!("cmd_display_tables")
+    fn cmd_display_tables<W: ResultWriter>(&self, writer: &mut W) {
+        let tables = self.catalog.get_tables_info();
+        writer.add_header_row(&["oid", "name", "cols"]);
+        for table in tables {
+            writer.add_row(&[&table.oid.to_string(), &table.name, &table.schema.to_string()]);
+        }
     }
 
     fn cmd_display_indices<W: ResultWriter>(&self, _writer: &mut W) {
         todo!("cmd_display_indices")
     }
 
-    fn cmd_display_help<W: ResultWriter>(&self, _writer: &mut W) {
-        todo!("cmd_display_help")
+    fn cmd_display_help<W: ResultWriter>(&self, writer: &mut W) {
+        let help = r"Welcome to the BusTub shell!
+
+\dt: show all tables
+\di: show all indices
+\dbgmvcc <table>: show version chain of a table
+\help: show this message again
+\txn: show current txn information
+\txn <txn_id>: switch to txn
+\txn gc: run garbage collection
+\txn -1: exit txn mode
+
+BusTub shell currently only supports a small set of Postgres queries. We'll set
+up a doc describing the current status later. It will silently ignore some parts
+of the query, so it's normal that you'll get a wrong result when executing
+unsupported SQL queries. This shell will be able to run `create table` only
+after you have completed the buffer pool manager. It will be able to execute SQL
+queries after you have implemented necessary query executors. Use `explain` to
+see the execution plan of your query.";
+        writer.add_row(&[help.to_owned()]);
     }
 
     fn cmd_dbg_mvcc<W: ResultWriter>(&self, _params: Vec<&str>, _writer: &mut W) {

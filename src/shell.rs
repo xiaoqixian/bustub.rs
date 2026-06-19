@@ -24,7 +24,10 @@ use bustub::concurrency::transaction::TransactionState;
 /// Main entry point for the BusTub shell.
 fn main() {
     // Create a BusTub instance with the default database file.
-    let mut bustub = BustubInstance::new("test.bustub");
+    let mut bustub = match BustubInstance::new("test.bustub") {
+        Ok(x) => x,
+        Err(e) => panic!("{}", e)
+    };
 
     let default_prompt = "bustub> ";
     let emoji_prompt = "\u{1f6c1}> "; // bathtub emoji

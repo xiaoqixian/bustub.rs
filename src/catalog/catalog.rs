@@ -49,6 +49,15 @@ pub struct TableInfo {
     pub oid: TableOid,
 }
 
+pub struct ShortTableInfo {
+    /// The table schema.
+    pub schema: Schema,
+    /// The table name.
+    pub name: String,
+    /// The table OID.
+    pub oid: TableOid,
+}
+
 impl TableInfo {
     /// Construct a new TableInfo instance.
     pub fn new(schema: Schema, name: String, table: TableHeap, oid: TableOid) -> Self {
@@ -57,6 +66,16 @@ impl TableInfo {
             name,
             table,
             oid,
+        }
+    }
+}
+
+impl From<&TableInfo> for ShortTableInfo {
+    fn from(t: &TableInfo) -> Self {
+        Self {
+            schema: t.schema.clone(),
+            name: t.name.clone(),
+            oid: t.oid,
         }
     }
 }
@@ -329,5 +348,13 @@ impl Catalog {
     pub fn get_table_names(&self) -> Vec<String> {
         let core = self.core.read().expect("catalog core read lock");
         core.table_names.keys().cloned().collect()
+    }
+
+    pub fn get_tables_info(&self) -> Vec<ShortTableInfo> {
+        let core = self.core.read().expect("catalog core read lock");
+        core.tables
+            .values()
+            .map(|t| ShortTableInfo::from(t.as_ref()))
+            .collect()
     }
 }

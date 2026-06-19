@@ -1,6 +1,8 @@
+use std::fmt::Display;
+
 pub trait ResultWriter {
-    fn add_row(&mut self, row: &[String]) -> &mut Self;
-    fn add_header_row(&mut self, row: &[String]) -> &mut Self;
+    fn add_row<T: Display>(&mut self, row: &[T]) -> &mut Self;
+    fn add_header_row<T: Display>(&mut self, row: &[T]) -> &mut Self;
 }
 
 pub struct TableWriter {
@@ -28,12 +30,12 @@ impl Default for TableWriter {
 }
 
 impl ResultWriter for TableWriter {
-    fn add_row(&mut self, row: &[String]) -> &mut Self {
+    fn add_row<T: Display>(&mut self, row: &[T]) -> &mut Self {
         self.table.add_row(row);
         self
     }
 
-    fn add_header_row(&mut self, row: &[String]) -> &mut Self {
+    fn add_header_row<T: Display>(&mut self, row: &[T]) -> &mut Self {
         self.table.set_header(row);
         self
     }
