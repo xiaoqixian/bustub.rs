@@ -155,8 +155,20 @@ impl BustubInstance {
         }
     }
 
-    fn cmd_display_indices<W: ResultWriter>(&self, _writer: &mut W) {
-        todo!("cmd_display_indices")
+    fn cmd_display_indices<W: ResultWriter>(&self, writer: &mut W) {
+        let table_names = self.catalog.get_table_names();
+        writer.add_header_row(&["table_name", "index_oid", "index_name", "index_cols"]);
+        for table in table_names {
+            let indices = self.catalog.get_table_indexes(&table);
+            for index in indices {
+                writer.add_row(&[
+                    &index.table_name, 
+                    &index.index_oid.to_string(), 
+                    &index.name,
+                    &index.key_schema.to_string(),
+                ]);
+            }
+        }
     }
 
     fn cmd_display_help<W: ResultWriter>(&self, writer: &mut W) {
