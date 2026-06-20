@@ -32,7 +32,7 @@ use super::{IntComparator, int_comparator};
 #[test]
 fn basic_scale_test() {
     let disk_manager = Arc::new(DiskManagerMemory::new());
-    let bpm = BufferPoolManager::new(30, disk_manager, LRUK_REPLACER_K);
+    let bpm = Arc::new(BufferPoolManager::new(30, disk_manager, LRUK_REPLACER_K));
 
     let page_id = bpm.new_page();
     let mut tree = BPlusTree::<i64, RID, IntComparator>::new("foo_pk".to_owned(), bpm.clone(), page_id, 2, 3, int_comparator);

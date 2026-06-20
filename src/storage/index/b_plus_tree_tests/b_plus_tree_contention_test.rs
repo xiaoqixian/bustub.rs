@@ -37,7 +37,7 @@ fn b_plus_tree_lock_benchmark(
     with_global_mutex: bool,
 ) -> bool {
     let disk_manager = Arc::new(DiskManagerMemory::new());
-    let bpm = BufferPoolManager::new(64, disk_manager, LRUK_REPLACER_K);
+    let bpm = Arc::new(BufferPoolManager::new(64, disk_manager, LRUK_REPLACER_K));
 
     let page_id = bpm.new_page();
     let tree = BPlusTree::<i64, RID, IntComparator>::new(

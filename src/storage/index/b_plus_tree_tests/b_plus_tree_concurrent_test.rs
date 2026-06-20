@@ -92,7 +92,7 @@ fn lookup_helper(tree: &SharedTree, keys: &[i64]) {
 fn concurrent_insert_test_1() {
     for _ in 0..NUM_ITERS {
         let disk_manager = Arc::new(DiskManagerMemory::new());
-        let bpm = BufferPoolManager::new(BPM_SIZE, disk_manager, LRUK_REPLACER_K);
+        let bpm = Arc::new(BufferPoolManager::new(BPM_SIZE, disk_manager, LRUK_REPLACER_K));
 
         let page_id = bpm.new_page();
         let tree = BPlusTree::<i64, RID, IntComparator>::new("foo_pk".to_owned(), bpm.clone(), page_id, 3, 5, int_comparator);
@@ -143,7 +143,7 @@ fn concurrent_insert_test_1() {
 fn concurrent_insert_test_2() {
     for _ in 0..NUM_ITERS {
         let disk_manager = Arc::new(DiskManagerMemory::new());
-        let bpm = BufferPoolManager::new(BPM_SIZE, disk_manager, LRUK_REPLACER_K);
+        let bpm = Arc::new(BufferPoolManager::new(BPM_SIZE, disk_manager, LRUK_REPLACER_K));
 
         let page_id = bpm.new_page();
         let tree = BPlusTree::<i64, RID, IntComparator>::new("foo_pk".to_owned(), bpm.clone(), page_id, 3, 5, int_comparator);
@@ -199,7 +199,7 @@ fn concurrent_insert_test_2() {
 fn concurrent_delete_test_1() {
     for _ in 0..NUM_ITERS {
         let disk_manager = Arc::new(DiskManagerMemory::new());
-        let bpm = BufferPoolManager::new(BPM_SIZE, disk_manager, LRUK_REPLACER_K);
+        let bpm = Arc::new(BufferPoolManager::new(BPM_SIZE, disk_manager, LRUK_REPLACER_K));
 
         let page_id = bpm.new_page();
         let mut tree = BPlusTree::<i64, RID, IntComparator>::new("foo_pk".to_owned(), bpm.clone(), page_id, 3, 5, int_comparator);
@@ -251,7 +251,7 @@ fn concurrent_delete_test_1() {
 fn concurrent_delete_test_2() {
     for _ in 0..NUM_ITERS {
         let disk_manager = Arc::new(DiskManagerMemory::new());
-        let bpm = BufferPoolManager::new(BPM_SIZE, disk_manager, LRUK_REPLACER_K);
+        let bpm = Arc::new(BufferPoolManager::new(BPM_SIZE, disk_manager, LRUK_REPLACER_K));
 
         let page_id = bpm.new_page();
         let mut tree = BPlusTree::<i64, RID, IntComparator>::new("foo_pk".to_owned(), bpm.clone(), page_id, 3, 5, int_comparator);
@@ -307,7 +307,7 @@ fn concurrent_delete_test_2() {
 fn concurrent_mix_test_1() {
     for _ in 0..MIXTEST_NUM_ITERS {
         let disk_manager = Arc::new(DiskManagerMemory::new());
-        let bpm = BufferPoolManager::new(BPM_SIZE, disk_manager, LRUK_REPLACER_K);
+        let bpm = Arc::new(BufferPoolManager::new(BPM_SIZE, disk_manager, LRUK_REPLACER_K));
 
         let page_id = bpm.new_page();
         let mut tree = BPlusTree::<i64, RID, IntComparator>::new("foo_pk".to_owned(), bpm.clone(), page_id, 3, 5, int_comparator);
@@ -376,7 +376,7 @@ fn concurrent_mix_test_1() {
 fn concurrent_mix_test_2() {
     for _ in 0..MIXTEST_NUM_ITERS {
         let disk_manager = Arc::new(DiskManagerMemory::new());
-        let bpm = BufferPoolManager::new(BPM_SIZE, disk_manager, LRUK_REPLACER_K);
+        let bpm = Arc::new(BufferPoolManager::new(BPM_SIZE, disk_manager, LRUK_REPLACER_K));
 
         let page_id = bpm.new_page();
         let mut tree = BPlusTree::<i64, RID, IntComparator>::new("foo_pk".to_owned(), bpm.clone(), page_id, 3, 5, int_comparator);
