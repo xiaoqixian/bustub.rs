@@ -14,7 +14,7 @@ impl<'cat> Optimizer<'cat> {
         }
     }
 
-    pub fn optimize(&self, _plan: &PlanNode) -> PlanNode {
-        todo!("")
+    pub fn optimize(&self, plan: PlanNode) -> PlanNode {
+        plan
     }
 }

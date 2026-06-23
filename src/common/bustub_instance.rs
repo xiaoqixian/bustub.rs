@@ -148,7 +148,7 @@ impl BustubInstance {
             let plan = planner.plan_query(&stmt).expect("");
 
             let optimizer = Optimizer::new(&self.catalog, false);
-            let plan = optimizer.optimize(&plan);
+            let plan = optimizer.optimize(plan);
 
             let exec_ctx = ExecutorContext {};
             let result_set = exec_engine.execute(&plan, &exec_ctx)?;
