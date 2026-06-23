@@ -10,7 +10,11 @@
 //
 //===----------------------------------------------------------------------===//
 
+use std::rc::Rc;
+
 use super::column::Column;
+
+pub type SchemaRef = Rc<Schema>;
 
 /// A Schema represents the schema (column types, names, offsets, etc.)
 /// for a table. It is composed of Column objects.

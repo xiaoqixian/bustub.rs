@@ -5,9 +5,12 @@ pub trait ResultWriter {
     fn add_header_row<T: Display>(&mut self, row: &[T]) -> &mut Self;
 }
 
+#[derive(Default)]
 pub struct TableWriter {
     table: comfy_table::Table,
 }
+
+pub struct NoopWriter {}
 
 impl TableWriter {
     /// Creates a new empty `TableWriter`.
@@ -23,12 +26,6 @@ impl TableWriter {
     }
 }
 
-impl Default for TableWriter {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl ResultWriter for TableWriter {
     fn add_row<T: Display>(&mut self, row: &[T]) -> &mut Self {
         self.table.add_row(row);
@@ -37,6 +34,16 @@ impl ResultWriter for TableWriter {
 
     fn add_header_row<T: Display>(&mut self, row: &[T]) -> &mut Self {
         self.table.set_header(row);
+        self
+    }
+}
+
+impl ResultWriter for NoopWriter {
+    fn add_row<T: Display>(&mut self, _row: &[T]) -> &mut Self {
+        self
+    }
+
+    fn add_header_row<T: Display>(&mut self, _row: &[T]) -> &mut Self {
         self
     }
 }

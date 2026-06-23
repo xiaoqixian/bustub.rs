@@ -49,7 +49,9 @@ pub enum BindError {
 
     EmptyTableRef,
 
-    UnsupportedYetSQL(String)
+    UnsupportedYetSQL(String),
+
+    Message(String)
 }
 
 impl fmt::Display for BindError {
@@ -90,8 +92,8 @@ pub struct Binder<'cat> {
     #[allow(dead_code)]
     universal_id: Cell<u64>,
 
-    bound_table_ref: Option<Box<TableRef>>,
-    all_table_ref: Vec<Box<TableRef>>
+    bound_table_ref: Option<TableRef>,
+    all_table_ref: Vec<TableRef>
 }
 
 impl<'cat> Binder<'cat> {
@@ -104,14 +106,15 @@ impl<'cat> Binder<'cat> {
         }
     }
 
-    fn push_table_ref(&mut self, table_ref: Box<TableRef>) {
+    fn push_table_ref(&mut self, table_ref: TableRef) {
         if let Some(t) = self.bound_table_ref.replace(table_ref) {
            self.all_table_ref.push(t); 
         }
     }
 
-    fn pop_table_ref(&mut self) -> Option<Box<TableRef>> {
+    fn pop_table_ref(&mut self) -> Option<TableRef> {
         if let None = self.bound_table_ref {
+            assert!(self.all_table_ref.is_empty());
             return None;
         }
         std::mem::replace(&mut self.bound_table_ref, self.all_table_ref.pop())
@@ -348,13 +351,15 @@ impl<'cat> Binder<'cat> {
             _ => return Err(BindError::UnsupportedYetSQL("Nested select is not supported yet.".to_owned()))
         };
         
-        let table = Box::new(self.bind_from(&sel.from)?);
+        let table = self.bind_from(&sel.from)?;
         self.push_table_ref(table);
+
+        let select_list = self.bind_select_projection(&sel.projection)?;
 
         let table = self.pop_table_ref().unwrap();
         Ok(SelectStatement {
             table,
-            select_list: vec![],
+            select_list,
             where_clause: None,
             group_by: vec![],
             having: None,
@@ -373,7 +378,7 @@ impl<'cat> Binder<'cat> {
                 let col_names = std::slice::from_ref(&ident.value);
                 let table_ref = match self.bound_table_ref.as_ref() {
                     None => return Err(BindError::EmptyTableRef),
-                    Some(t) => t.as_ref()
+                    Some(t) => t
                 };
                 match Self::resolve_column(table_ref, &col_names)? {
                     Some(expr) => Ok(expr),
@@ -384,7 +389,7 @@ impl<'cat> Binder<'cat> {
                 let col_names = idents.iter().map(|i| i.value.clone()).collect::<Vec<_>>();
                 let table_ref = match self.bound_table_ref.as_ref() {
                     None => return Err(BindError::EmptyTableRef),
-                    Some(t) => t.as_ref()
+                    Some(t) => t
                 };
                 match Self::resolve_column(table_ref, &col_names)? {
                     Some(expr) => Ok(expr),
@@ -431,6 +436,71 @@ impl<'cat> Binder<'cat> {
                 table_with_joins.joins.iter()
                     .try_fold(base_table, |b, join| self.bind_table_join(b, join))
             }
+        }
+    }
+
+    fn bind_select_projection(&self, projection: &Vec<sql::SelectItem>) -> Result<Vec<BoundExpression>, BindError> {
+        let table_ref = match self.bound_table_ref.as_ref() {
+            Some(t) => t,
+            None => return Err(BindError::Message("Empty table ref".to_string()))
+        };
+
+        let mut select_list = Vec::new();
+        let mut is_select_star = false;
+        let mut has_agg= false;
+        let mut has_window= false;
+        for proj in projection {
+            let expr = match proj {
+                sql::SelectItem::UnnamedExpr(expr) => self.bind_expression(expr)?,
+                sql::SelectItem::Wildcard(_) => BoundExpression::BoundStar,
+                _ => return Err(BindError::UnsupportedExpr(format!("{}", proj)))
+            };
+
+            match expr {
+                BoundExpression::BoundStar => {
+                    if !select_list.is_empty() {
+                        return Err(BindError::Message("select * cannot have other expressions in list".to_string()));
+                    }
+                    select_list = Self::get_all_columns(table_ref)?;
+                    is_select_star = true;
+                },
+                expr => {
+                    if is_select_star {
+                        return Err(BindError::Message("select * cannot have other expressions in list".to_string()));
+                    }
+                    if expr.has_aggregation() { has_agg = true; }
+                    if expr.has_window_function() { has_window = true; }
+                    select_list.push(expr);
+                }
+            }
+        }
+        if has_window && has_agg {
+            return Err(BindError::Message("cannot have both normal agg and window agg in same query".to_string()));
+        }
+
+        Ok(select_list)
+    }
+
+    fn get_all_columns(table_ref: &TableRef) -> Result<Vec<BoundExpression>, BindError> {
+        match table_ref {
+            TableRef::BaseTableRef(tr) => {
+                Ok(tr.schema.columns.iter()
+                    .map(|c| BoundExpression::BoundColumnRef(BoundColumnRef {col_names: vec![tr.table.clone(), c.column_name.clone()]}))
+                    .collect())
+            },
+            TableRef::CrossProductRef(cr) => {
+                let mut columns = Self::get_all_columns(&cr.left)?;
+                let append_columns = Self::get_all_columns(&cr.right)?;
+                columns.extend(append_columns);
+                Ok(columns)
+            },
+            TableRef::JoinRef(jr) => {
+                let mut columns = Self::get_all_columns(&jr.left)?;
+                let append_columns = Self::get_all_columns(&jr.right)?;
+                columns.extend(append_columns);
+                Ok(columns)
+            }
+            _ => Err(BindError::Message(format!("select * cannot be used with table ref {}", table_ref)))
         }
     }
 

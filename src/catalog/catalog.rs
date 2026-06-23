@@ -129,6 +129,8 @@ pub struct Catalog {
     core: RwLock<CatalogCore>
 }
 
+pub type CatalogRef = Arc<Catalog>;
+
 impl Catalog {
     /// Construct a new Catalog instance.
     pub fn new(bpm: Arc<BufferPoolManager>) -> Self {

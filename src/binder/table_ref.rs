@@ -77,6 +77,12 @@ impl fmt::Display for TableRef {
     }
 }
 
+impl fmt::Debug for TableRef {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(self, f)
+    }
+}
+
 //===----------------------------------------------------------------------===//
 // BaseTableRef
 //===----------------------------------------------------------------------===//
@@ -222,7 +228,7 @@ impl fmt::Display for JoinRef {
 /// where `(SELECT * FROM t1)` is `SubqueryRef`.
 pub struct SubqueryRef {
     /// Subquery.
-    pub subquery: SelectStatement,
+    pub subquery: Box<SelectStatement>,
     /// Name of each item in the select list.
     pub select_list_name: Vec<Vec<String>>,
     /// Alias.
@@ -236,5 +242,11 @@ impl fmt::Display for SubqueryRef {
             "SubqueryRef {{ alias={} }}",
             self.alias
         )
+    }
+}
+
+impl fmt::Debug for SubqueryRef {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(self, f)
     }
 }

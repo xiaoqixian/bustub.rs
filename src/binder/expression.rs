@@ -81,7 +81,7 @@ impl fmt::Display for BoundOrderBy {
 pub enum BoundExpression {
     BoundColumnRef(BoundColumnRef),
     BoundConstant(BoundConstant),
-    BoundStar(BoundStar),
+    BoundStar,
     BoundAlias(BoundAlias),
     BoundBinaryOp(BoundBinaryOp),
     BoundUnaryOp(BoundUnaryOp),
@@ -117,7 +117,7 @@ impl fmt::Display for BoundExpression {
         match self {
             BoundExpression::BoundColumnRef(inner) => fmt::Display::fmt(inner, f),
             BoundExpression::BoundConstant(inner) => fmt::Display::fmt(inner, f),
-            BoundExpression::BoundStar(inner) => fmt::Display::fmt(inner, f),
+            BoundExpression::BoundStar => write!(f, "*"),
             BoundExpression::BoundAlias(inner) => fmt::Display::fmt(inner, f),
             BoundExpression::BoundBinaryOp(inner) => fmt::Display::fmt(inner, f),
             BoundExpression::BoundUnaryOp(inner) => fmt::Display::fmt(inner, f),
@@ -134,7 +134,7 @@ impl fmt::Debug for BoundExpression {
         match self {
             BoundExpression::BoundColumnRef(v) => f.debug_tuple("BoundColumnRef").field(v).finish(),
             BoundExpression::BoundConstant(v) => f.debug_tuple("BoundConstant").field(v).finish(),
-            BoundExpression::BoundStar(v) => f.debug_tuple("BoundStar").field(v).finish(),
+            BoundExpression::BoundStar => write!(f, "BoundStar"),
             BoundExpression::BoundAlias(v) => f.debug_tuple("BoundAlias").field(v).finish(),
             BoundExpression::BoundBinaryOp(v) => f.debug_tuple("BoundBinaryOp").field(v).finish(),
             BoundExpression::BoundUnaryOp(v) => f.debug_tuple("BoundUnaryOp").field(v).finish(),
@@ -197,20 +197,6 @@ impl Clone for BoundConstant {
 impl fmt::Display for BoundConstant {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Display::fmt(&self.val, f)
-    }
-}
-
-//===----------------------------------------------------------------------===//
-// BoundStar
-//===----------------------------------------------------------------------===//
-
-/// The star in SELECT list, e.g. `SELECT * FROM x`.
-#[derive(Debug, Clone)]
-pub struct BoundStar;
-
-impl fmt::Display for BoundStar {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "*")
     }
 }
 

@@ -83,6 +83,15 @@ impl fmt::Display for BoundStatement {
     }
 }
 
+impl fmt::Debug for BoundStatement {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            BoundStatement::Select(inner) => fmt::Debug::fmt(inner, f),
+            _ => todo!("")
+        }
+    }
+}
+
 //===----------------------------------------------------------------------===//
 // CreateStatement
 //===----------------------------------------------------------------------===//
@@ -108,9 +117,10 @@ impl fmt::Display for CreateStatement {
 //===----------------------------------------------------------------------===//
 
 /// A bound SELECT statement.
+#[derive(Debug)]
 pub struct SelectStatement {
     /// Bound FROM clause.
-    pub table: Box<TableRef>,
+    pub table: TableRef,
     /// Bound SELECT list.
     pub select_list: Vec<BoundExpression>,
     /// Bound WHERE clause.

@@ -1,16 +1,31 @@
 use std::sync::Arc;
 
-use crate::{
-    binder::Binder, buffer::buffer_pool_manager::BufferPoolManager, catalog::Catalog, common::errors::BustubError, concurrency::{LockManager, Transaction, TransactionManager}, execution::{execution_engine::ExecutionEngine, executor_context::ExecutorContext, mock_scan_executor::{MOCK_TABLE_LIST, get_mock_table_schema_of}}, optimizer::Optimizer, planner::Planner
-};
 use super::result_writer::ResultWriter;
+use crate::catalog::Catalog;
+use crate::common::{BUFFER_POOL_SIZE, LRUK_REPLACER_K};
+use crate::storage::disk::disk_scheduler::DiskManager;
+use crate::storage::disk::hard_disk_manager::HardDiskManager;
+use crate::{
+    binder::Binder,
+    buffer::buffer_pool_manager::BufferPoolManager,
+    catalog::CatalogRef,
+    common::errors::BustubError,
+    concurrency::{LockManager, Transaction, TransactionManager},
+    execution::{
+        execution_engine::ExecutionEngine,
+        executor_context::ExecutorContext,
+        mock_scan_executor::{get_mock_table_schema_of, MOCK_TABLE_LIST},
+    },
+    optimizer::Optimizer,
+    planner::Planner,
+};
 
 #[allow(dead_code)]
 pub struct BustubInstance {
     pub(crate) bpm: Option<Arc<BufferPoolManager>>,
     pub(crate) lock_manager: LockManager,
     pub(crate) txn_manager: TransactionManager,
-    pub(crate) catalog: Catalog,
+    pub(crate) catalog: CatalogRef,
     curr_txn: Option<Arc<Transaction>>,
     managed_txn_mode: bool,
 }
@@ -21,19 +36,10 @@ impl BustubInstance {
     /// This initializes an in-memory disk manager, a buffer pool manager,
     /// a lock manager, a transaction manager, and a catalog.
     pub fn new(db_file: &str) -> Result<Self, BustubError> {
-        use crate::buffer::buffer_pool_manager::BufferPoolManager;
-        use crate::catalog::Catalog;
-        use crate::common::{BUFFER_POOL_SIZE, LRUK_REPLACER_K};
-        use crate::concurrency::LockManager;
-        use crate::concurrency::TransactionManager;
-        use crate::storage::disk::hard_disk_manager::HardDiskManager;
-        use crate::storage::disk::disk_scheduler::DiskManager;
-
         // Create the in-memory disk manager (shared between the struct and BPM).
-        let disk_manager = Arc::new({
-            HardDiskManager::new(db_file)
-                .map_err(|e| format!("{}", e))?
-        }) as Arc<dyn DiskManager>;
+        let disk_manager =
+            Arc::new(HardDiskManager::new(db_file).map_err(|e| format!("{}", e))?)
+                as Arc<dyn DiskManager>;
 
         // Initialize the buffer pool manager.
         let bpm = Arc::new(BufferPoolManager::new(
@@ -43,7 +49,7 @@ impl BustubInstance {
         ));
 
         // Initialize the catalog with the buffer pool manager.
-        let catalog = Catalog::new(bpm.clone());
+        let catalog = CatalogRef::new(Catalog::new(bpm.clone()));
 
         Ok(BustubInstance {
             bpm: Some(bpm),
@@ -59,21 +65,25 @@ impl BustubInstance {
         self.managed_txn_mode = true;
     }
 
-    pub fn execute_sql<W: ResultWriter>(&mut self, sql: &str, writer: &mut W) -> Result<bool, BustubError> {
+    pub fn execute_sql<W: ResultWriter>(
+        &mut self,
+        sql: &str,
+        writer: &mut W,
+    ) -> Result<bool, BustubError> {
         if let Some('\\') = sql.chars().next() {
             return match sql {
                 "\\dt" => {
                     self.cmd_display_tables(writer);
                     Ok(true)
-                },
+                }
                 "\\di" => {
                     self.cmd_display_indices(writer);
                     Ok(true)
-                },
+                }
                 "\\help" => {
                     self.cmd_display_help(writer);
                     Ok(true)
-                },
+                }
                 sql => {
                     if sql.starts_with("\\dbgmvcc") {
                         let params = sql.split(' ').collect::<Vec<_>>();
@@ -84,7 +94,10 @@ impl BustubInstance {
                         self.cmd_txn(params, writer);
                         Ok(true)
                     } else {
-                        Err(BustubError::Message(format!("unsupported internal command: {}", sql)))
+                        Err(BustubError::Message(format!(
+                            "unsupported internal command: {}",
+                            sql
+                        )))
                     }
                 }
             };
@@ -92,7 +105,7 @@ impl BustubInstance {
 
         let (txn, is_local_txn) = match self.curr_txn.take() {
             Some(t) => (t, false),
-            None => (self.txn_manager.new_txn()?, true)
+            None => (self.txn_manager.new_txn()?, true),
         };
         match self.execute_sql_txn(sql, writer, Some(&txn)) {
             Ok(x) => {
@@ -102,7 +115,7 @@ impl BustubInstance {
                     self.curr_txn = Some(txn);
                 }
                 Ok(x)
-            },
+            }
             Err(e) => {
                 self.txn_manager.abort_txn(&txn)?;
                 Err(e)
@@ -110,21 +123,28 @@ impl BustubInstance {
         }
     }
 
-    pub fn execute_sql_txn<W: ResultWriter>(&mut self, sql: &str, writer: &mut W, _txn: Option<&Transaction>) -> Result<bool, BustubError> {
+    pub fn execute_sql_txn<W: ResultWriter>(
+        &mut self,
+        sql: &str,
+        writer: &mut W,
+        _txn: Option<&Transaction>,
+    ) -> Result<bool, BustubError> {
         let exec_engine = ExecutionEngine {};
         let mut binder = Binder::new(&self.catalog);
         let dialect = sqlparser::dialect::GenericDialect {};
         let statements = sqlparser::parser::Parser::parse_sql(&dialect, sql)
             .map_err(|e| format!("parse error: {:?}", e))?;
-        
+
         for sql_stmt in statements.iter() {
-            let stmt = binder.bind_statement(sql_stmt).map_err(|e| format!("{:?}", e))?;
-            
+            let stmt = binder
+                .bind_statement(sql_stmt)
+                .map_err(|e| format!("{:?}", e))?;
+
             match stmt {
                 _ => {}
             }
 
-            let planner = Planner::new(&self.catalog);
+            let mut planner = Planner::new(self.catalog.clone());
             let plan = planner.plan_query(&stmt).expect("");
 
             let optimizer = Optimizer::new(&self.catalog, false);
@@ -133,8 +153,12 @@ impl BustubInstance {
             let exec_ctx = ExecutorContext {};
             let result_set = exec_engine.execute(&plan, &exec_ctx)?;
             let output_schema = plan.output_schema_ref();
-            
-            let col_names = output_schema.columns.iter().map(|c| c.get_name().to_owned()).collect::<Vec<_>>();
+
+            let col_names = output_schema
+                .columns
+                .iter()
+                .map(|c| c.get_name().to_owned())
+                .collect::<Vec<_>>();
             writer.add_header_row(col_names.as_slice());
             for tuple in result_set.iter() {
                 let tuple_values = (0..output_schema.columns.len())
@@ -143,7 +167,7 @@ impl BustubInstance {
                 writer.add_row(tuple_values.as_slice());
             }
         }
-        
+
         Ok(false)
     }
 
@@ -151,7 +175,11 @@ impl BustubInstance {
         let tables = self.catalog.get_tables_info();
         writer.add_header_row(&["oid", "name", "cols"]);
         for table in tables {
-            writer.add_row(&[&table.oid.to_string(), &table.name, &table.schema.to_string()]);
+            writer.add_row(&[
+                &table.oid.to_string(),
+                &table.name,
+                &table.schema.to_string(),
+            ]);
         }
     }
 
@@ -162,8 +190,8 @@ impl BustubInstance {
             let indices = self.catalog.get_table_indexes(&table);
             for index in indices {
                 writer.add_row(&[
-                    &index.table_name, 
-                    &index.index_oid.to_string(), 
+                    &index.table_name,
+                    &index.index_oid.to_string(),
                     &index.name,
                     &index.key_schema.to_string(),
                 ]);
@@ -200,7 +228,6 @@ see the execution plan of your query.";
     fn cmd_txn<W: ResultWriter>(&self, _params: Vec<&str>, _writer: &mut W) {
         todo!("cmd_dbg_txn")
     }
-
 }
 
 impl BustubInstance {
@@ -216,5 +243,21 @@ impl BustubInstance {
 
     pub fn current_managed_txn(&self) -> Option<&Transaction> {
         self.curr_txn.as_deref()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::common::{errors::BustubError, result_writer::NoopWriter};
+
+    #[test]
+    fn bustub_debug() -> Result<(), BustubError> {
+        let sql = r"select * from __mock_t4_1m;";
+        let mut writer = NoopWriter {};
+        let mut bustub = BustubInstance::new("bustub.db")?;
+        bustub.create_mock_table()?;
+        bustub.execute_sql(sql, &mut writer)?;
+        Ok(())
     }
 }

@@ -15,5 +15,5 @@ mod schema;
 mod catalog;
 
 pub use column::Column;
-pub use schema::Schema;
+pub use schema::{SchemaRef, Schema};
 pub use catalog::*;
