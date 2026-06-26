@@ -48,14 +48,11 @@ impl<'a> InsertExecutor<'a> {
     }
 }
 
-impl<'a> Iterator for InsertExecutor<'a> {
-    type Item = (Tuple, RID);
-    fn next(&mut self) -> Option<Self::Item> {
+impl<'a> Executor for InsertExecutor<'a> {
+    fn next(&mut self, _batch_size: usize) -> Option<(Vec<Tuple>, Vec<RID>)> {
         todo!("")
     }
-}
 
-impl<'a> Executor for InsertExecutor<'a> {
     fn output_schema_ref(&self) -> &Schema {
         &self.plan.output_schema
     }

@@ -47,14 +47,11 @@ impl<'a> ProjectionExecutor<'a> {
     }
 }
 
-impl<'a> Iterator for ProjectionExecutor<'a> {
-    type Item = (Tuple, RID);
-    fn next(&mut self) -> Option<Self::Item> {
+impl<'a> Executor for ProjectionExecutor<'a> {
+    fn next(&mut self, _batch_size: usize) -> Option<(Vec<Tuple>, Vec<RID>)> {
         todo!("")
     }
-}
 
-impl<'a> Executor for ProjectionExecutor<'a> {
     fn output_schema_ref(&self) -> &Schema {
         &self.plan.output_schema
     }

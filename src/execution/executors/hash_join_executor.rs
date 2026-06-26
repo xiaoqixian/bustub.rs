@@ -50,14 +50,11 @@ impl<'a> HashJoinExecutor<'a> {
     }
 }
 
-impl<'a> Iterator for HashJoinExecutor<'a> {
-    type Item = (Tuple, RID);
-    fn next(&mut self) -> Option<Self::Item> {
+impl<'a> Executor for HashJoinExecutor<'a> {
+    fn next(&mut self, _batch_size: usize) -> Option<(Vec<Tuple>, Vec<RID>)> {
         todo!("")
     }
-}
 
-impl<'a> Executor for HashJoinExecutor<'a> {
     fn output_schema_ref(&self) -> &Schema {
         &self.plan.output_schema
     }

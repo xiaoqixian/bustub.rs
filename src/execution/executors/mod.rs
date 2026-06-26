@@ -43,7 +43,8 @@ pub mod update_executor;
 pub mod values_executor;
 pub mod window_function_executor;
 
-pub trait Executor: Iterator<Item = (Tuple, RID)> {
+pub trait Executor {
+    fn next(&mut self, batch_size: usize) -> Option<(Vec<Tuple>, Vec<RID>)>;
     fn output_schema_ref(&self) -> &Schema;
     fn executor_context(&self) -> &ExecutorContext;
 }

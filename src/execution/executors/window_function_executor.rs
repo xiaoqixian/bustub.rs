@@ -51,14 +51,11 @@ impl<'a> WindowFunctionExecutor<'a> {
     }
 }
 
-impl<'a> Iterator for WindowFunctionExecutor<'a> {
-    type Item = (Tuple, RID);
-    fn next(&mut self) -> Option<Self::Item> {
+impl<'a> Executor for WindowFunctionExecutor<'a> {
+    fn next(&mut self, _batch_size: usize) -> Option<(Vec<Tuple>, Vec<RID>)> {
         todo!("")
     }
-}
 
-impl<'a> Executor for WindowFunctionExecutor<'a> {
     fn output_schema_ref(&self) -> &Schema {
         &self.plan.output_schema
     }

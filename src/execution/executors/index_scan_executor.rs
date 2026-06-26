@@ -38,14 +38,11 @@ impl<'a> IndexScanExecutor<'a> {
     }
 }
 
-impl<'a> Iterator for IndexScanExecutor<'a> {
-    type Item = (Tuple, RID);
-    fn next(&mut self) -> Option<Self::Item> {
+impl<'a> Executor for IndexScanExecutor<'a> {
+    fn next(&mut self, _batch_size: usize) -> Option<(Vec<Tuple>, Vec<RID>)> {
         todo!("")
     }
-}
 
-impl<'a> Executor for IndexScanExecutor<'a> {
     fn output_schema_ref(&self) -> &Schema {
         &self.plan.output_schema
     }
