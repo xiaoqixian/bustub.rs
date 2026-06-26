@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 use std::collections::HashMap;
+use std::fmt::Display;
 
 use crate::binder::BaseTableRef;
 use crate::binder::OrderByType;
@@ -574,6 +575,32 @@ impl PlanNode {
     /// Return the number of children.
     pub fn get_child_count(&self) -> usize {
         self.get_children().len()
+    }
+}
+
+impl Display for PlanNode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            PlanNode::SeqScan(_) => write!(f, "SeqScan"),
+            PlanNode::IndexScan(_) => write!(f, "IndexScan"),
+            PlanNode::Insert(_) => write!(f, "Insert"),
+            PlanNode::Update(_) => write!(f, "Update"),
+            PlanNode::Delete(_) => write!(f, "Delete"),
+            PlanNode::Aggregation(_) => write!(f, "Aggregation"),
+            PlanNode::Limit(_) => write!(f, "Limit"),
+            PlanNode::NestedLoopJoin(_) => write!(f, "NestedLoopJoin"),
+            PlanNode::NestedIndexJoin(_) => write!(f, "NestedIndexJoin"),
+            PlanNode::HashJoin(_) => write!(f, "HashJoin"),
+            PlanNode::Filter(_) => write!(f, "Filter"),
+            PlanNode::Values(_) => write!(f, "Values"),
+            PlanNode::Projection(_) => write!(f, "Projection"),
+            PlanNode::Sort(_) => write!(f, "Sort"),
+            PlanNode::TopN(_) => write!(f, "TopN"),
+            PlanNode::TopNPerGroup(_) => write!(f, "TopNPerGroup"),
+            PlanNode::MockScan(_) => write!(f, "MockScan"),
+            PlanNode::Window(_) => write!(f, "Window"),
+        
+        }
     }
 }
 
