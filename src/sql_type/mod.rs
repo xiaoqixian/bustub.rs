@@ -10,30 +10,63 @@
 //
 //===----------------------------------------------------------------------===//
 
-pub mod abstract_pool;
-pub mod bigint_type;
-pub mod boolean_type;
-pub mod decimal_type;
-pub mod integer_parent_type;
-pub mod integer_type;
-pub mod limits;
-pub mod numeric_type;
-pub mod smallint_type;
-pub mod sql_type;
-pub mod timestamp_type;
-pub mod tinyint_type;
-pub mod type_id;
-pub mod type_util;
+use std::fmt::Display;
+
 pub mod value;
-pub mod value_factory;
-pub mod varlen_type;
-
-// Re-export commonly used types at the sql_type level.
-pub use sql_type::{get_cmp_bool, get_max_value, get_min_value, get_type_instance,
-                   get_type_size, type_id_to_string, CmpBool, SqlType};
-pub use type_id::TypeId;
+pub mod limits;
 pub use value::Value;
-pub use value_factory::ValueFactory;
-pub use numeric_type::NumericType;
-pub use integer_parent_type::IntegerParentType;
+/// Every possible SQL type ID.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum TypeId {
+    Boolean,
+    TinyInt,
+    SmallInt,
+    Integer,
+    BigInt,
+    Decimal,
+    Varchar,
+    Timestamp,
+}
 
+/// Comparison result enum that supports three-valued logic (SQL NULL semantics).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CmpBool {
+    CmpFalse = 0,
+    CmpTrue = 1,
+    CmpNull = 2,
+}
+
+impl From<bool> for CmpBool {
+    fn from(value: bool) -> Self {
+        match value {
+            true => CmpBool::CmpTrue,
+            false => CmpBool::CmpFalse,
+        }
+    }
+}
+
+impl Display for CmpBool {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CmpBool::CmpFalse => write!(f, "false"),
+            CmpBool::CmpTrue => write!(f, "true"),
+            CmpBool::CmpNull => write!(f, "null"),
+        }
+    }
+}
+
+
+impl Display for TypeId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TypeId::Boolean => write!(f, "Boolean"),
+            TypeId::TinyInt => write!(f, "TinyInt"),
+            TypeId::SmallInt => write!(f, "SmallInt"),
+            TypeId::Integer => write!(f, "Integer"),
+            TypeId::BigInt => write!(f, "BigInt"),
+            TypeId::Decimal => write!(f, "Decimal"),
+            TypeId::Varchar => write!(f, "Varchar"),
+            TypeId::Timestamp => write!(f, "Timestamp"),
+        }
+    }
+}
