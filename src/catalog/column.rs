@@ -10,8 +10,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-use crate::sql_type::type_id::TypeId;
-use crate::sql_type::sql_type::type_id_to_string;
+use crate::sql_type::TypeId;
 
 /// A Column represents a single column in a table schema.
 #[derive(Clone)]
@@ -125,7 +124,7 @@ impl Column {
     /// Get a string representation of this column.
     pub fn to_string_simplified(&self, simplified: bool) -> String {
         if simplified {
-            let mut s = format!("{}:{}", self.column_name, type_id_to_string(self.column_type));
+            let mut s = format!("{}:{}", self.column_name, self.column_type);
             if self.column_type == TypeId::Varchar {
                 s.push_str(&format!("({})", self.length));
             }
@@ -135,7 +134,7 @@ impl Column {
         format!(
             "Column[{}, {}, Offset:{}, Length:{}]",
             self.column_name,
-            type_id_to_string(self.column_type),
+            self.column_type,
             self.column_offset,
             self.length,
         )

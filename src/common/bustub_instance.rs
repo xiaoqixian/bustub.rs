@@ -14,7 +14,7 @@ use crate::{
     execution::{
         execution_engine::ExecutionEngine,
         executor_context::ExecutorContext,
-        mock_scan_executor::{get_mock_table_schema_of, MOCK_TABLE_LIST},
+        executors::mock_scan_executor::{get_mock_table_schema_of, MOCK_TABLE_LIST},
     },
     optimizer::Optimizer,
     planner::Planner,

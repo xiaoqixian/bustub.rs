@@ -14,11 +14,9 @@ use std::fmt;
 
 use crate::catalog::Column;
 use crate::catalog::Schema;
-use crate::sql_type::limits::BUSTUB_BOOLEAN_NULL;
-use crate::sql_type::sql_type::CmpBool;
-use crate::sql_type::type_id::TypeId;
+use crate::sql_type::CmpBool;
+use crate::sql_type::TypeId;
 use crate::sql_type::value::Value;
-use crate::sql_type::value_factory::ValueFactory;
 use crate::storage::table::tuple::Tuple;
 
 //===----------------------------------------------------------------------===//
@@ -207,19 +205,6 @@ impl Clone for AbstractExpression {
 }
 
 //===----------------------------------------------------------------------===//
-// Helper: convert a CmpBool to a boolean Value
-//===----------------------------------------------------------------------===//
-
-/// Convert a three-valued comparison result into a boolean Value.
-fn cmp_bool_to_value(result: CmpBool) -> Value {
-    match result {
-        CmpBool::CmpTrue => Value::from_i8(TypeId::Boolean, 1),
-        CmpBool::CmpFalse => Value::from_i8(TypeId::Boolean, 0),
-        CmpBool::CmpNull => Value::from_i8(TypeId::Boolean, BUSTUB_BOOLEAN_NULL),
-    }
-}
-
-//===----------------------------------------------------------------------===//
 // AbstractExpression method implementations
 //===----------------------------------------------------------------------===//
 
@@ -240,32 +225,32 @@ impl AbstractExpression {
                     ComparisonType::GreaterThan => lhs.compare_greater_than(&rhs),
                     ComparisonType::GreaterThanOrEqual => lhs.compare_greater_than_equals(&rhs),
                 };
-                cmp_bool_to_value(result)
+                Value::from_cmp_bool(result)
             }
             AbstractExpression::Arithmetic(inner) => {
                 let lhs = inner.left.evaluate(tuple, schema);
                 let rhs = inner.right.evaluate(tuple, schema);
                 if lhs.is_null() || rhs.is_null() {
-                    return ValueFactory::get_null_value_by_type(TypeId::Integer);
+                    return Value::zero(TypeId::Integer);
                 }
                 let l = lhs.get_as::<i32>();
                 let r = rhs.get_as::<i32>();
                 match inner.compute_type {
-                    ArithmeticType::Plus => ValueFactory::get_integer_value(l + r),
-                    ArithmeticType::Minus => ValueFactory::get_integer_value(l - r),
+                    ArithmeticType::Plus => Value::from_i32(l + r),
+                    ArithmeticType::Minus => Value::from_i32(l - r),
                 }
             }
             AbstractExpression::Logic(inner) => {
                 let lhs = inner.left.evaluate(tuple, schema);
                 let rhs = inner.right.evaluate(tuple, schema);
                 let result = perform_logic(lhs, rhs, inner.logic_type);
-                cmp_bool_to_value(result)
+                Value::from_cmp_bool(result)
             }
             AbstractExpression::String(inner) => {
                 let val = inner.arg.evaluate(tuple, schema);
                 let str_val = val.to_string_val();
                 let result = compute_string(&str_val, inner.expr_type);
-                ValueFactory::get_varchar_value(&result)
+                Value::from_str(&result)
             }
             AbstractExpression::Array(inner) => {
                 let mut values = Vec::with_capacity(inner.children.len());
@@ -278,7 +263,7 @@ impl AbstractExpression {
                 // Since the Rust project does not have a dedicated Vector type,
                 // we store the f64 data as raw bytes in a Varchar value.
                 let packed = pack_f64_values(&values);
-                Value::from_bytes(TypeId::Varchar, &packed, packed.len() as u32, true)
+                Value::from_bytes(&packed, packed.len() as u32, true)
             }
         }
     }
@@ -315,7 +300,7 @@ impl AbstractExpression {
                     ComparisonType::GreaterThan => lhs.compare_greater_than(&rhs),
                     ComparisonType::GreaterThanOrEqual => lhs.compare_greater_than_equals(&rhs),
                 };
-                cmp_bool_to_value(result)
+                Value::from_cmp_bool(result)
             }
             AbstractExpression::Arithmetic(inner) => {
                 let lhs = inner
@@ -325,13 +310,13 @@ impl AbstractExpression {
                     .right
                     .evaluate_join(left_tuple, left_schema, right_tuple, right_schema);
                 if lhs.is_null() || rhs.is_null() {
-                    return ValueFactory::get_null_value_by_type(TypeId::Integer);
+                    return Value::null(TypeId::Integer);
                 }
                 let l = lhs.get_as::<i32>();
                 let r = rhs.get_as::<i32>();
                 match inner.compute_type {
-                    ArithmeticType::Plus => ValueFactory::get_integer_value(l + r),
-                    ArithmeticType::Minus => ValueFactory::get_integer_value(l - r),
+                    ArithmeticType::Plus => Value::from_i32(l + r),
+                    ArithmeticType::Minus => Value::from_i32(l - r),
                 }
             }
             AbstractExpression::Logic(inner) => {
@@ -342,7 +327,7 @@ impl AbstractExpression {
                     .right
                     .evaluate_join(left_tuple, left_schema, right_tuple, right_schema);
                 let result = perform_logic(lhs, rhs, inner.logic_type);
-                cmp_bool_to_value(result)
+                Value::from_cmp_bool(result)
             }
             AbstractExpression::String(inner) => {
                 let val = inner
@@ -350,7 +335,7 @@ impl AbstractExpression {
                     .evaluate_join(left_tuple, left_schema, right_tuple, right_schema);
                 let str_val = val.to_string_val();
                 let result = compute_string(&str_val, inner.expr_type);
-                ValueFactory::get_varchar_value(&result)
+                Value::from_str(&result)
             }
             AbstractExpression::Array(inner) => {
                 let mut values = Vec::with_capacity(inner.children.len());
@@ -360,7 +345,7 @@ impl AbstractExpression {
                     values.push(val.get_as::<f64>());
                 }
                 let packed = pack_f64_values(&values);
-                Value::from_bytes(TypeId::Varchar, &packed, packed.len() as u32, true)
+                Value::from_bytes(&packed, packed.len() as u32, true)
             }
         }
     }

@@ -12,7 +12,7 @@ pub use table_ref::*;
 
 use crate::{
     catalog::{Catalog, Column, IndexType, Schema},
-    sql_type::{type_id::TypeId},
+    sql_type::TypeId,
 };
 
 //===----------------------------------------------------------------------===//

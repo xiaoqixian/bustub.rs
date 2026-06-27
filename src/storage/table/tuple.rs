@@ -12,8 +12,7 @@
 
 use crate::catalog::Schema;
 use crate::common::rid::RID;
-use crate::sql_type::limits::BUSTUB_VALUE_NULL;
-use crate::sql_type::value::Value;
+use crate::sql_type::Value;
 
 /// Timestamp type used in tuple metadata.
 pub type TimeStamp = i64;
@@ -75,11 +74,8 @@ impl Tuple {
         // 1. Calculate the size of the tuple.
         let mut tuple_size = schema.get_inlined_storage_size();
         for &i in schema.get_unlined_columns() {
-            let mut len = values[i].get_storage_size();
-            if len == BUSTUB_VALUE_NULL {
-                len = 0;
-            }
-            tuple_size += size_of::<u32>() + len as usize;
+            let len = values[i].get_storage_size();
+            tuple_size += size_of::<u32>() + len;
         }
 
         // 2. Allocate memory.
@@ -97,11 +93,8 @@ impl Tuple {
                 data[off..off + 4].copy_from_slice(&offset.to_le_bytes());
                 // Serialize varchar value, in place (size + data).
                 values[i as usize].serialize_to(&mut data[offset as usize..]);
-                let mut len = values[i as usize].get_storage_size();
-                if len == BUSTUB_VALUE_NULL {
-                    len = 0;
-                }
-                offset += size_of::<u32>() + len as usize;
+                let len = values[i as usize].get_storage_size();
+                offset += size_of::<u32>() + len;
             } else {
                 let off = col.get_offset() as usize;
                 values[i as usize].serialize_to(&mut data[off..]);

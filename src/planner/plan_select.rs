@@ -134,7 +134,7 @@ pub fn plan_select(planner: &mut Planner, sel: &SelectStatement) -> Result<PlanN
         (Some(count), None) => {
             let count = match count {
                 BoundExpression::BoundConstant(constant)
-                    if constant.val.sql_type_id == TypeId::Integer =>
+                    if constant.val.get_type_id() == TypeId::Integer =>
                 {
                     constant.val.get_as::<i32>()
                 }
@@ -153,7 +153,7 @@ pub fn plan_select(planner: &mut Planner, sel: &SelectStatement) -> Result<PlanN
         }
         (_, Some(offset)) => match offset {
             BoundExpression::BoundConstant(constant)
-                if constant.val.sql_type_id == TypeId::Integer =>
+                if constant.val.get_type_id() == TypeId::Integer =>
             {
                 return Err(BustubError::Message(
                     "OFFSET clause is not supported yet.".to_string(),

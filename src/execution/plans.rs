@@ -20,8 +20,9 @@ use crate::catalog::IndexOid;
 use crate::catalog::{Schema, SchemaRef};
 use crate::catalog::TableOid;
 use crate::execution::expressions::AbstractExpression;
-use crate::sql_type::type_id::TypeId;
-use crate::sql_type::value::Value;
+use crate::sql_type::CmpBool;
+use crate::sql_type::TypeId;
+use crate::sql_type::Value;
 
 //===----------------------------------------------------------------------===//
 // Type aliases
@@ -633,5 +634,3 @@ impl AggregateKey {
         true
     }
 }
-
-use crate::sql_type::sql_type::CmpBool;
