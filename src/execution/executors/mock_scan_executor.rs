@@ -520,12 +520,6 @@ fn get_function_of<'a>(plan: &'a MockScanPlanNode) -> Box<dyn Fn(usize) -> Tuple
 // MockScanExecutor
 // ---------------------------------------------------------------------------
 
-/// MockScanExecutor returns `true` when the scan is still active.
-const EXECUTOR_ACTIVE: bool = true;
-
-/// MockScanExecutor returns `false` when the scan is exhausted.
-const EXECUTOR_EXHAUSTED: bool = false;
-
 /// The MockScanExecutor executor executes a sequential table scan for tests.
 pub struct MockScanExecutor<'a> {
     /// The plan node for the scan.
@@ -569,6 +563,8 @@ impl<'a> Executor for MockScanExecutor<'a> {
             false => Some((tuple_batch, rid_batch))
         }
     }
+
+    fn name(&self) -> &str { "mock scan" }
 }
 
 impl<'a> MockScanExecutor<'a> {

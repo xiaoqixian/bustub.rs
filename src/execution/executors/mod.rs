@@ -47,6 +47,8 @@ pub trait Executor {
     fn next(&mut self, batch_size: usize) -> Option<(Vec<Tuple>, Vec<RID>)>;
     fn output_schema_ref(&self) -> &Schema;
     fn executor_context(&self) -> &ExecutorContext;
+
+    fn name(&self) -> &str { "unkonwn" }
 }
 
 pub struct ExecutorFactory;

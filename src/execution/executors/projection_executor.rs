@@ -78,9 +78,13 @@ impl<'a> Executor for ProjectionExecutor<'a> {
             
             if tuple_batch.len() < batch_size {
                 (self.child_tuples, self.child_rids) = match self.child_executor.next(batch_size) {
-                    None => break,
+                    None => {
+                        self.child_offset = self.child_tuples.len();
+                        break;
+                    },
                     Some(x) => x,
                 };
+                assert!(!self.child_tuples.is_empty());
                 self.child_offset = 0;
             }
         }
@@ -98,6 +102,8 @@ impl<'a> Executor for ProjectionExecutor<'a> {
     fn executor_context(&self) -> &ExecutorContext {
         self.exec_ctx
     }
+
+    fn name(&self) -> &str { "projection" }
 }
 
 
