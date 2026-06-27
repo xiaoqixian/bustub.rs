@@ -47,7 +47,7 @@ fn main() {
 
     // Generate mock tables.
     if let Err(e) = bustub.create_mock_table() {
-        eprintln!("Error creating mock tables: {:?}", e);
+        eprintln!("Error creating mock tables: {}", e);
         return;
     }
 
@@ -145,7 +145,7 @@ fn run_interactive(bustub: &mut BustubInstance, prompt: &str) {
                 println!("{}", writer.to_string());
             }
             Err(e) => {
-                eprintln!("{:?}", e);
+                eprintln!("{}", e);
             }
         }
     }
