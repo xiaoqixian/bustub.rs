@@ -24,9 +24,9 @@ use crate::{
 pub enum BindError {
     UnsupportedStatement(String),
     /// Unsupported SQL data type encountered.
-    UnsupportedDataType(sql::DataType),
+    UnsupportedDataType(String),
     /// Unsupported table name component encountered.
-    UnsupportedTableName(sql::ObjectNamePart),
+    UnsupportedTableName(String),
     /// The specified table was not found in the catalog.
     TableNotFound(String),
     /// The specified column was not found in the current scope.
@@ -124,7 +124,8 @@ impl<'cat> Binder<'cat> {
         type Statement = sql::Statement;
         match stmt {
             Statement::Query(query) => self.bind_query(query.as_ref()).map(|s| BoundStatement::Select(s)),
-            _ => Err(BindError::UnsupportedStatement(format!("{:?}", stmt)))
+            Statement::CreateTable(ct) => self.bind_create(ct).map(|ct| BoundStatement::Create(ct)),
+            _ => Err(BindError::UnsupportedStatement(format!("{}", stmt)))
         }
     }
 }
@@ -142,8 +143,8 @@ impl<'cat> Binder<'cat> {
     // Column Definition / CREATE TABLE
     //===----------------------------------------------------------------------===//
 
-    fn bind_column_def(&self, col_def: sql::ColumnDef) -> Result<Column, BindError> {
-        match col_def.data_type {
+    fn bind_column_def(&self, col_def: &sql::ColumnDef) -> Result<Column, BindError> {
+        match &col_def.data_type {
             // Boolean types
             sql::DataType::Bool | sql::DataType::Boolean => {
                 Ok(Column::new(col_def.name.value.as_str(), TypeId::Boolean))
@@ -205,7 +206,7 @@ impl<'cat> Binder<'cat> {
             | sql::DataType::CharVarying(char_len)
             | sql::DataType::Nvarchar(char_len) => {
                 let length = match char_len {
-                    Some(sql::CharacterLength::IntegerLength { length, .. }) => length as usize,
+                    Some(sql::CharacterLength::IntegerLength { length, .. }) => *length as usize,
                     _ => 128, // Default length when not specified.
                 };
                 Ok(Column::new_with_length(
@@ -221,15 +222,15 @@ impl<'cat> Binder<'cat> {
                 Ok(Column::new(col_def.name.value.as_str(), TypeId::Timestamp))
             }
             // Unsupported data type
-            ty => Err(BindError::UnsupportedDataType(ty)),
+            ty => Err(BindError::UnsupportedDataType(format!("{}", ty))),
         }
     }
 
-    pub fn bind_create(&self, stmt: sql::CreateTable) -> Result<CreateStatement, BindError> {
-        let name_part = stmt.name.0.into_iter().take(1).next().unwrap();
+    pub fn bind_create(&self, stmt: &sql::CreateTable) -> Result<CreateStatement, BindError> {
+        let name_part = stmt.name.0.iter().take(1).next().unwrap();
         let table_name = match name_part {
-            sql::ObjectNamePart::Identifier(id) => id.value,
-            x => return Err(BindError::UnsupportedTableName(x)),
+            sql::ObjectNamePart::Identifier(id) => id.value.clone(),
+            x => return Err(BindError::UnsupportedTableName(format!("{}", x))),
         };
         let primary_key = stmt
             .columns
@@ -246,7 +247,7 @@ impl<'cat> Binder<'cat> {
             .collect::<Vec<String>>();
         let columns = stmt
             .columns
-            .into_iter()
+            .iter()
             .map(|x| self.bind_column_def(x))
             .collect::<Result<Vec<_>, _>>()?;
         Ok(CreateStatement {
@@ -263,7 +264,7 @@ impl<'cat> Binder<'cat> {
                 let name_part = name.0.into_iter().next().unwrap();
                 match name_part {
                     sql::ObjectNamePart::Identifier(id) => id.value,
-                    x => return Err(BindError::UnsupportedTableName(x)),
+                    x => return Err(BindError::UnsupportedTableName(format!("{}", x))),
                 }
             }
             None => String::new(),
@@ -273,7 +274,7 @@ impl<'cat> Binder<'cat> {
         let table_name_part = stmt.table_name.0.into_iter().next().unwrap();
         let table_name = match table_name_part {
             sql::ObjectNamePart::Identifier(id) => id.value,
-            x => return Err(BindError::UnsupportedTableName(x)),
+            x => return Err(BindError::UnsupportedTableName(format!("{}", x))),
         };
 
         // Look up the table in the catalog to obtain its OID and schema.

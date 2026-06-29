@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 use std::collections::HashMap;
+use std::fmt::Display;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, RwLock};
 
@@ -35,6 +36,16 @@ pub type IndexOid = u32;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IndexType {
     BPlusTreeIndex,
+    HashTableIndex,
+}
+
+impl Display for IndexType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            IndexType::BPlusTreeIndex => write!(f, "BPlusTreeIndex"),
+            IndexType::HashTableIndex => write!(f, "HashTableIndex"),
+        }
+    }
 }
 
 /// TableInfo maintains metadata about a table.
@@ -155,7 +166,7 @@ impl Catalog {
     pub fn create_table(
         &self,
         table_name: &str,
-        schema: &Schema,
+        schema: Schema,
         create_table_heap: bool,
     ) -> Option<Arc<TableInfo>> {
         let mut core = self.core.write().expect("catalog core write lock");
@@ -176,8 +187,7 @@ impl Catalog {
         let table_oid = core.next_table_oid.fetch_add(1, Ordering::Relaxed);
 
         // Construct the table information.
-        let schema_copy = Schema::new(schema.get_columns().clone());
-        let meta = Arc::new(TableInfo::new(schema_copy, table_name.to_string(), table, table_oid));
+        let meta = Arc::new(TableInfo::new(schema, table_name.to_string(), table, table_oid));
 
         // Update internal tracking.
         core.tables.insert(table_oid, meta.clone());
@@ -210,7 +220,7 @@ impl Catalog {
         index_name: &str,
         table_name: &str,
         schema: &Schema,
-        key_schema: &Schema,
+        key_schema: Schema,
         key_attrs: &[usize],
         keysize: usize,
         is_primary_key: bool,
@@ -246,7 +256,8 @@ impl Catalog {
             IndexType::BPlusTreeIndex => Box::new(new_gk_b_plus_tree_index::<8, RID>(
                 index_meta,
                 core.bpm.clone(),
-            ))
+            )),
+            _ => todo!("unsupported index: {}", index_type),
         };
 
         // Populate the index with all tuples in the table heap.
@@ -257,7 +268,7 @@ impl Catalog {
         let mut iter = table_meta.table.make_iterator();
         while !iter.is_end() {
             let (_meta, tuple) = iter.get_tuple();
-            let index_key = tuple.key_from_tuple(schema, key_schema, key_attrs);
+            let index_key = tuple.key_from_tuple(schema, &key_schema, key_attrs);
             index.insert_entry(&index_key, tuple.get_rid(), txn);
             iter.next();
         }
@@ -265,10 +276,8 @@ impl Catalog {
         // Get the next OID for the new index.
         let index_oid = core.next_index_oid.fetch_add(1, Ordering::Relaxed);
 
-        // Construct index information; IndexInfo takes ownership of the index.
-        let key_schema_copy = Schema::new(key_schema.get_columns().clone());
         let index_info = Arc::new(IndexInfo::new(
-            key_schema_copy,
+            key_schema,
             index_name.to_string(),
             index,
             index_oid,
