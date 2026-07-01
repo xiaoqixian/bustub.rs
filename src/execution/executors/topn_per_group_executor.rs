@@ -30,6 +30,7 @@ use crate::{
 pub struct TopNPerGroupExecutor<'a> {
     exec_ctx: &'a ExecutorContext,
     plan: &'a TopNPerGroupPlanNode,
+    #[allow(dead_code)]
     child_executor: Box<dyn Executor + 'a>,
 }
 

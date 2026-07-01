@@ -30,7 +30,9 @@ use crate::{
 pub struct HashJoinExecutor<'a> {
     exec_ctx: &'a ExecutorContext,
     plan: &'a HashJoinPlanNode,
+    #[allow(dead_code)]
     left_child: Box<dyn Executor + 'a>,
+    #[allow(dead_code)]
     right_child: Box<dyn Executor + 'a>,
 }
 

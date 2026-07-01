@@ -31,6 +31,7 @@ use crate::{
 pub struct AggregationExecutor<'a> {
     exec_ctx: &'a ExecutorContext,
     plan: &'a AggregationPlanNode,
+    #[allow(dead_code)]
     child_executor: Box<dyn Executor + 'a>,
 }
 

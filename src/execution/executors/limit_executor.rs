@@ -30,6 +30,7 @@ use crate::{
 pub struct LimitExecutor<'a> {
     exec_ctx: &'a ExecutorContext,
     plan: &'a LimitPlanNode,
+    #[allow(dead_code)]
     child_executor: Box<dyn Executor + 'a>,
 }
 

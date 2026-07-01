@@ -31,6 +31,7 @@ use crate::{
 pub struct UpdateExecutor<'a> {
     exec_ctx: &'a ExecutorContext,
     plan: &'a UpdatePlanNode,
+    #[allow(dead_code)]
     child_executor: Box<dyn Executor + 'a>,
 }
 

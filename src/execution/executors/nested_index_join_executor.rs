@@ -30,6 +30,7 @@ use crate::{
 pub struct NestedIndexJoinExecutor<'a> {
     exec_ctx: &'a ExecutorContext,
     plan: &'a NestedIndexJoinPlanNode,
+    #[allow(dead_code)]
     child_executor: Box<dyn Executor + 'a>,
 }
 

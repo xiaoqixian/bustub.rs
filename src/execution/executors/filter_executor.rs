@@ -30,6 +30,7 @@ use crate::{
 pub struct FilterExecutor<'a> {
     exec_ctx: &'a ExecutorContext,
     plan: &'a FilterPlanNode,
+    #[allow(dead_code)]
     child_executor: Box<dyn Executor + 'a>,
 }
 

@@ -30,6 +30,7 @@ use crate::{
 pub struct SortExecutor<'a> {
     exec_ctx: &'a ExecutorContext,
     plan: &'a SortPlanNode,
+    #[allow(dead_code)]
     child_executor: Box<dyn Executor + 'a>,
 }
 

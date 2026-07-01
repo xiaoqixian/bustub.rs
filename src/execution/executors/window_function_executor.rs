@@ -34,6 +34,7 @@ use crate::{
 pub struct WindowFunctionExecutor<'a> {
     exec_ctx: &'a ExecutorContext,
     plan: &'a WindowFunctionPlanNode,
+    #[allow(dead_code)]
     child_executor: Box<dyn Executor + 'a>,
 }
 

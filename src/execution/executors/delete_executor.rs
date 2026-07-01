@@ -31,6 +31,7 @@ use crate::{
 pub struct DeleteExecutor<'a> {
     exec_ctx: &'a ExecutorContext,
     plan: &'a DeletePlanNode,
+    #[allow(dead_code)]
     child_executor: Box<dyn Executor + 'a>,
 }
 
