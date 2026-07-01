@@ -10,6 +10,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
@@ -24,13 +25,69 @@ pub enum AccessType {
     Index,
 }
 
+struct RingBuffer<T> {
+    data: Vec<T>,
+    size: usize,
+    head: usize,
+    tail: usize,
+}
+
+impl<T> RingBuffer<T> {
+    pub fn with_capacity(cap: usize) -> Self {
+        Self {
+            data: Vec::with_capacity(cap),
+            size: 0,
+            head: 0,
+            tail: 0,
+        }
+    }
+
+    pub fn push(&mut self, val: T) {
+        let v = &mut self.data;
+        if v.len() < v.capacity() {
+            v.push(val);
+            self.tail = v.len();
+            self.size = v.len();
+            if self.tail == v.capacity() {
+                self.tail = 0;
+            }
+            return;
+        }
+
+        v[self.tail] = val;
+        self.tail += 1;
+        if self.tail == v.capacity() { self.tail = 0; }
+        if self.size == v.capacity() {
+            self.head += 1;
+            if self.head == v.capacity() {
+                self.head = 0;
+            }
+        } else {
+            self.size += 1;
+        }
+    }
+
+    pub fn front(&self) -> &T {
+        assert!(self.size > 0);
+        &self.data[self.head]
+    }
+
+    pub fn size(&self) -> usize {
+        self.size
+    }
+
+    pub fn full(&self) -> bool {
+        self.size == self.data.capacity()
+    }
+}
+
 /// LRUKNode stores the access history and eviction metadata for a single
 /// frame tracked by the LRU-K replacer.
 #[allow(dead_code)]
 pub struct LRUKNode {
     /// History of last seen K timestamps of this frame. Least recent
     /// timestamp is stored in front (oldest first).
-    history: Vec<usize>,
+    history: RingBuffer<usize>,
 
     /// The K value for this node (the backward k-distance threshold).
     k: usize,
@@ -39,7 +96,7 @@ pub struct LRUKNode {
     fid: FrameId,
 
     /// Whether this frame is currently eligible for eviction.
-    is_evictable: bool,
+    evictable: bool,
 }
 
 impl LRUKNode {
@@ -47,13 +104,48 @@ impl LRUKNode {
     ///
     /// The node starts with an empty access history and is not evictable
     /// by default.
-    pub fn new(k: usize, fid: FrameId) -> Self {
+    pub fn new(k: usize, fid: FrameId, first_ts: usize) -> Self {
+        let mut history = RingBuffer::with_capacity(k);
+        history.push(first_ts);
         Self {
-            history: Vec::new(),
+            history,
             k,
             fid,
-            is_evictable: false,
+            evictable: true,
         }
+    }
+
+    pub fn access_at(&mut self, ts: usize) {
+        self.history.push(ts);
+    }
+}
+
+impl PartialEq for LRUKNode {
+    fn eq(&self, _other: &Self) -> bool {
+        false
+    }
+}
+
+impl Eq for LRUKNode {}
+
+impl PartialOrd for LRUKNode {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        match (self.history.full(), other.history.full()) {
+            (false, false) => match (self.history.size(), other.history.size()) {
+                (0, _) => Some(Ordering::Greater),
+                (_, 0) => Some(Ordering::Less),
+                _ => Some(other.history.front().cmp(self.history.front())),
+            },
+            (false, true) => Some(Ordering::Greater),
+            (true, false) => Some(Ordering::Less),
+            (true, true) => Some(other.history.front().cmp(self.history.front()))
+        }
+    }
+}
+
+impl Ord for LRUKNode {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.partial_cmp(other).unwrap()
     }
 }
 
@@ -95,7 +187,7 @@ pub struct LRUKReplacer {
     core: Arc<Mutex<LRUKReplacerCore>>,
 }
 
-impl LRUKReplacer {
+impl LRUKReplacerCore {
     /// Creates a new LRU-K replacer.
     ///
     /// * `num_frames` - the maximum number of frames the replacer will be
@@ -103,15 +195,13 @@ impl LRUKReplacer {
     /// * `k` - the backward k-distance threshold.
     ///
     /// TODO(P1): Add implementation.
-    pub fn new(num_frames: usize, k: usize) -> Self {
+    fn new(num_frames: usize, k: usize) -> Self {
         Self {
-            core: Arc::new(Mutex::new(LRUKReplacerCore {
-                node_store: HashMap::new(),
-                current_timestamp: 0,
-                curr_size: 0,
-                replacer_size: num_frames,
-                k,
-            })),
+            node_store: HashMap::new(),
+            current_timestamp: 0,
+            curr_size: 0,
+            replacer_size: num_frames,
+            k,
         }
     }
 
@@ -131,8 +221,16 @@ impl LRUKReplacer {
     /// `None` if no frames can be evicted.
     ///
     /// TODO(P1): Add implementation.
-    pub fn evict(&self) -> Option<FrameId> {
-        todo!("TODO(P1): Add implementation")
+    fn evict(&mut self) -> Option<FrameId> {
+        let evict_fid = self.node_store.values()
+            .filter(|node| node.evictable)
+            .max()
+            .map(|node| node.fid);
+        if let Some(fid) = &evict_fid {
+            self.node_store.remove(fid);
+            self.curr_size -= 1;
+        }
+        evict_fid
     }
 
     /// Records an access event for the given frame at the current timestamp.
@@ -147,9 +245,21 @@ impl LRUKReplacer {
     ///   parameter is only needed for leaderboard tests.
     ///
     /// TODO(P1): Add implementation.
-    pub fn record_access(&self, frame_id: FrameId, access_type: AccessType) {
-        let _ = (frame_id, access_type);
-        todo!("TODO(P1): Add implementation")
+    fn record_access(&mut self, frame_id: FrameId, _access_type: AccessType) {
+        let ts = self.current_timestamp;
+        self.current_timestamp += 1;
+        if let Some(node) = self.node_store.get_mut(&frame_id) {
+            node.access_at(ts);
+            return;
+        }
+        
+        if self.node_store.len() == self.replacer_size {
+            let evict_fid = self.evict().expect("failed to record access");
+            self.node_store.remove(&evict_fid);
+        }
+
+        self.node_store.insert(frame_id, LRUKNode::new(self.k, frame_id, ts));
+        self.curr_size += 1;
     }
 
     /// Toggles whether a frame is evictable or non-evictable. This function
@@ -171,9 +281,15 @@ impl LRUKReplacer {
     ///   not.
     ///
     /// TODO(P1): Add implementation.
-    pub fn set_evictable(&self, frame_id: FrameId, set_evictable: bool) {
-        let _ = (frame_id, set_evictable);
-        todo!("TODO(P1): Add implementation")
+    fn set_evictable(&mut self, frame_id: FrameId, set_evictable: bool) {
+        if let Some(node) = self.node_store.get_mut(&frame_id) {
+            let old_ev = std::mem::replace(&mut node.evictable, set_evictable);
+            match (old_ev, set_evictable) {
+                (true, false) => self.curr_size -= 1,
+                (false, true) => self.curr_size += 1,
+                _ => {}
+            }
+        }
     }
 
     /// Removes an evictable frame from the replacer, along with its access
@@ -191,17 +307,70 @@ impl LRUKReplacer {
     /// * `frame_id` - the ID of the frame to be removed.
     ///
     /// TODO(P1): Add implementation.
-    pub fn remove(&self, frame_id: FrameId) {
-        let _ = frame_id;
-        todo!("TODO(P1): Add implementation")
+    fn remove(&mut self, frame_id: FrameId) {
+        if let Some(node) = self.node_store.remove(&frame_id) {
+            assert!(node.evictable, "try to remove an unevictable frame");
+        }
+        assert!(self.curr_size > 0);
+        self.curr_size -= 1;
     }
 
     /// Returns the replacer's size, which tracks the number of evictable
     /// frames.
     ///
     /// TODO(P1): Add implementation.
-    pub fn size(&self) -> usize {
-        todo!("TODO(P1): Add implementation")
+    fn size(&self) -> usize {
+        self.curr_size
+    }
+}
+
+impl LRUKReplacer {
+    pub fn new(num_frames: usize, k: usize) -> Self {
+        Self {
+            core: Arc::new(Mutex::new(LRUKReplacerCore::new(num_frames, k)))
+        }
+    }
+
+    /// Finds the frame with the largest backward k-distance and evicts it.
+    /// Only frames that are marked as 'evictable' are candidates for
+    /// eviction.
+    ///
+    /// A frame with less than k historical references is given +inf as its
+    /// backward k-distance. If multiple frames have infinite backward
+    /// k-distance, then the frame with the earliest timestamp (based on LRU)
+    /// is evicted.
+    ///
+    /// Successful eviction decrements the replacer's size and removes the
+    /// frame's access history.
+    ///
+    /// Returns `Some(frame_id)` if a frame was evicted successfully, or
+    /// `None` if no frames can be evicted.
+    ///
+    /// TODO(P1): Add implementation.
+    pub fn evict(&self) -> Option<FrameId> {
+        let mut core = self.core.lock().unwrap();
+        core.evict()
+    }
+
+    pub fn record_access(&self, frame_id: FrameId, access_type: AccessType) {
+        let mut core = self.core.lock().unwrap();
+        core.record_access(frame_id, access_type)
+    }
+
+    pub fn set_evictable(&self, frame_id: FrameId, set_evictable: bool) {
+        let mut core = self.core.lock().unwrap();
+        core.set_evictable(frame_id, set_evictable)
+    }
+
+    pub fn remove(&self, frame_id: FrameId) {
+        let mut core = self.core.lock().unwrap();
+        core.remove(frame_id)
+    }
+
+    #[allow(dead_code)]
+    fn size(&self) -> usize {
+        let core = self.core.lock().unwrap();
+        core.size()
     }
 }
 
