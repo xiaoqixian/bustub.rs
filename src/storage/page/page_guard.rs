@@ -109,19 +109,12 @@ impl<'a> ReadPageGuard<'a> {
     ///
     /// TODO(P1): Add implementation.
     pub fn as_ptr(&self) -> *const u8 {
-        todo!("TODO(P1): Add implementation.")
+        self.frame.data.as_ptr()
     }
 
     /// Returns an immutable reference to the page data as a `&[u8]` slice.
     pub fn as_slice(&self) -> &[u8] {
         self.frame.data.as_slice()
-    }
-
-    /// Returns whether the page is dirty (modified but not flushed to disk).
-    ///
-    /// TODO(P1): Add implementation.
-    pub fn is_dirty(&self) -> bool {
-        todo!("TODO(P1): Add implementation.")
     }
 
     pub fn as_ref<T>(&self) -> &T {
@@ -151,7 +144,7 @@ impl<'a> WritePageGuard<'a> {
     ///
     /// TODO(P1): Add implementation.
     pub fn as_ptr(&self) -> *const u8 {
-        todo!("TODO(P1): Add implementation.")
+        self.frame.data.as_ptr()
     }
 
     /// Gets a raw mutable pointer to the page of data this guard is
@@ -159,7 +152,7 @@ impl<'a> WritePageGuard<'a> {
     ///
     /// TODO(P1): Add implementation.
     pub fn as_mut_ptr(&mut self) -> *mut u8 {
-        todo!("TODO(P1): Add implementation.")
+        self.frame.data.as_mut_ptr()
     }
 
     /// Returns an immutable reference to the page data as a `&[u8]` slice.
@@ -170,13 +163,6 @@ impl<'a> WritePageGuard<'a> {
     /// Returns a mutable reference to the page data as a `&mut [u8]` slice.
     pub fn as_mut_slice(&mut self) -> &mut [u8] {
         self.frame.data.as_mut_slice()
-    }
-
-    /// Returns whether the page is dirty (modified but not flushed to disk).
-    ///
-    /// TODO(P1): Add implementation.
-    pub fn is_dirty(&self) -> bool {
-        todo!("TODO(P1): Add implementation.")
     }
 
     pub fn as_ref<T>(&self) -> &T {
