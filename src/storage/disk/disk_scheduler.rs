@@ -11,7 +11,7 @@
 //===----------------------------------------------------------------------===//
 
 use std::sync::mpsc;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::thread::{self, JoinHandle};
 
 use crate::common::PageId;
@@ -47,11 +47,13 @@ pub trait DiskManager: Send + Sync {
 // DiskRequest
 // ---------------------------------------------------------------------------
 
+enum DataWithDirection {
+    Read(*mut u8),
+    Write(*const u8),
+}
+
 /// Represents a Write or Read request for the DiskManager to execute.
 pub struct DiskRequest {
-    /// Flag indicating whether the request is a write or a read.
-    pub is_write: bool,
-
     /// Pointer to the start of the memory location where a page is either:
     ///   1. being read into from disk (on a read).
     ///   2. being written out to disk (on a write).
@@ -59,16 +61,16 @@ pub struct DiskRequest {
     /// # Safety
     /// The pointer must be valid for `BUSTUB_PAGE_SIZE` bytes for the entire
     /// lifetime of this request.
-    pub data: *mut u8,
+    data: DataWithDirection,
 
     /// ID of the page being read from / written to disk.
-    pub page_id: PageId,
+    page_id: PageId,
 
     /// Callback used to signal to the request issuer when the request has been
     /// completed. This is a oneshot sender: the worker thread sends `true`
     /// through it once the I/O is complete, and the caller blocks on the
     /// corresponding receiver.
-    pub callback: mpsc::SyncSender<bool>,
+    callback: mpsc::SyncSender<bool>,
 }
 
 // SAFETY: `DiskRequest` is moved across threads but the raw pointer `data` is
@@ -97,7 +99,7 @@ pub struct DiskScheduler {
     ///
     /// When the `DiskScheduler` is dropped, a `None` sentinel is pushed into
     /// the queue to signal the background thread to stop.
-    request_queue: Mutex<mpsc::Sender<Option<DiskRequest>>>,
+    request_queue: mpsc::Sender<Option<DiskRequest>>,
 
     /// The background thread responsible for issuing scheduled requests to the
     /// disk manager.
@@ -116,20 +118,36 @@ impl DiskScheduler {
 
         DiskScheduler {
             disk_manager,
-            request_queue: Mutex::new(tx),
+            request_queue: tx,
             background_thread: Some(handle),
         }
     }
 
     /// Schedules a request for the DiskManager to execute.
-    ///
-    /// * `r` - The request to be scheduled.
-    pub fn schedule(&self, r: DiskRequest) {
+    pub fn schedule_read(&self, page_id: PageId, data: *mut u8) -> mpsc::Receiver<bool> {
+        let (sender, receiver) = mpsc::sync_channel(1);
+        let req = DiskRequest {
+            data: DataWithDirection::Read(data),
+            page_id,
+            callback: sender,
+        };
         self.request_queue
-            .lock()
-            .unwrap()
-            .send(Some(r))
+            .send(Some(req))
             .expect("DiskScheduler worker thread has terminated unexpectedly");
+        receiver
+    }
+
+    pub fn schedule_write(&self, page_id: PageId, data: *const u8) -> mpsc::Receiver<bool> {
+        let (sender, receiver) = mpsc::sync_channel(1);
+        let req = DiskRequest {
+            data: DataWithDirection::Write(data),
+            page_id,
+            callback: sender,
+        };
+        self.request_queue
+            .send(Some(req))
+            .expect("DiskScheduler worker thread has terminated unexpectedly");
+        receiver
     }
 
     /// Background worker thread function that processes scheduled requests.
@@ -146,14 +164,19 @@ impl DiskScheduler {
                 Ok(Some(r)) => {
                     // SAFETY: The caller guarantees that `r.data` points to a
                     // valid buffer of at least `BUSTUB_PAGE_SIZE` bytes.
-                    let data_slice =
-                        unsafe { std::slice::from_raw_parts_mut(r.data, BUSTUB_PAGE_SIZE) };
-
-                    if r.is_write {
-                        dm.write_page(r.page_id, data_slice);
-                    } else {
-                        dm.read_page(r.page_id, data_slice);
+                    match r.data {
+                        DataWithDirection::Read(data) => {
+                            let data_slice =
+                                unsafe { std::slice::from_raw_parts_mut(data, BUSTUB_PAGE_SIZE) };
+                            dm.read_page(r.page_id, data_slice);
+                        },
+                        DataWithDirection::Write(data) => {
+                            let data_slice =
+                                unsafe { std::slice::from_raw_parts(data, BUSTUB_PAGE_SIZE) };
+                            dm.write_page(r.page_id, data_slice);
+                        }
                     }
+
                     // Signal completion to the caller.
                     r.callback.send(true).ok();
                 }
@@ -163,14 +186,6 @@ impl DiskScheduler {
                 }
             }
         }
-    }
-
-    /// Creates a oneshot channel pair for signaling request completion.
-    /// The returned `SyncSender` should be placed into the `DiskRequest`'s
-    /// `callback` field; the returned `Receiver` is used to block until the
-    /// request has been processed.
-    pub fn create_promise() -> (mpsc::SyncSender<bool>, mpsc::Receiver<bool>) {
-        mpsc::sync_channel(1)
     }
 
     /// Increases the size of the database file to fit the specified number of
@@ -196,8 +211,6 @@ impl Drop for DiskScheduler {
     fn drop(&mut self) {
         // Put a `None` in the queue to signal to exit the loop.
         self.request_queue
-            .lock()
-            .unwrap()
             .send(None)
             .expect("DiskScheduler worker thread has terminated unexpectedly");
 
@@ -229,24 +242,11 @@ mod disk_scheduler {
         let len = test_bytes.len().min(BUSTUB_PAGE_SIZE);
         data[..len].copy_from_slice(&test_bytes[..len]);
 
-        let (promise1, future1) = DiskScheduler::create_promise();
-        let (promise2, future2) = DiskScheduler::create_promise();
+        let recv1 = disk_scheduler.schedule_write(0, data.as_ptr());
+        let recv2 = disk_scheduler.schedule_read(0, buf.as_mut_ptr());
 
-        disk_scheduler.schedule(DiskRequest {
-            is_write: true,
-            data: data.as_mut_ptr(),
-            page_id: 0,
-            callback: promise1,
-        });
-        disk_scheduler.schedule(DiskRequest {
-            is_write: false,
-            data: buf.as_mut_ptr(),
-            page_id: 0,
-            callback: promise2,
-        });
-
-        assert!(future1.recv().unwrap());
-        assert!(future2.recv().unwrap());
+        assert!(recv1.recv().unwrap());
+        assert!(recv2.recv().unwrap());
         assert_eq!(&buf[..len], &data[..len]);
 
         // Drop the scheduler to join the background thread.

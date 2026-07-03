@@ -277,14 +277,14 @@ impl LRUKReplacerCore {
     ///
     /// * `frame_id` - the ID of the frame whose evictable status will be
     ///   modified.
-    /// * `set_evictable` - whether the given frame should be evictable or
+    /// * `evictable` - whether the given frame should be evictable or
     ///   not.
     ///
     /// TODO(P1): Add implementation.
-    fn set_evictable(&mut self, frame_id: FrameId, set_evictable: bool) {
+    fn set_evictable(&mut self, frame_id: FrameId, evictable: bool) {
         if let Some(node) = self.node_store.get_mut(&frame_id) {
-            let old_ev = std::mem::replace(&mut node.evictable, set_evictable);
-            match (old_ev, set_evictable) {
+            let old_ev = std::mem::replace(&mut node.evictable, evictable);
+            match (old_ev, evictable) {
                 (true, false) => self.curr_size -= 1,
                 (false, true) => self.curr_size += 1,
                 _ => {}

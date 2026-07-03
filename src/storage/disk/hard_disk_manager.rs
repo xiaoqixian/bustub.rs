@@ -461,7 +461,7 @@ mod hard_disk_manager_tests {
         let dm = Arc::new(HardDiskManager::new(&db_path).unwrap());
         let disk_scheduler = DiskScheduler::new(dm);
 
-        let mut buf = vec![0u8; BUSTUB_PAGE_SIZE];
+        let buf = vec![0u8; BUSTUB_PAGE_SIZE];
         let mut data = vec![0u8; BUSTUB_PAGE_SIZE];
 
         let test_str = "A test string.";
@@ -469,24 +469,11 @@ mod hard_disk_manager_tests {
         let len = test_bytes.len().min(BUSTUB_PAGE_SIZE);
         data[..len].copy_from_slice(&test_bytes[..len]);
 
-        let (promise1, future1) = DiskScheduler::create_promise();
-        let (promise2, future2) = DiskScheduler::create_promise();
+        let recv1 = disk_scheduler.schedule_write(0, data.as_ptr());
+        let recv2 = disk_scheduler.schedule_read(0, data.as_mut_ptr());
 
-        disk_scheduler.schedule(crate::storage::disk::disk_scheduler::DiskRequest {
-            is_write: true,
-            data: data.as_mut_ptr(),
-            page_id: 0,
-            callback: promise1,
-        });
-        disk_scheduler.schedule(crate::storage::disk::disk_scheduler::DiskRequest {
-            is_write: false,
-            data: buf.as_mut_ptr(),
-            page_id: 0,
-            callback: promise2,
-        });
-
-        assert!(future1.recv().unwrap());
-        assert!(future2.recv().unwrap());
+        assert!(recv1.recv().unwrap());
+        assert!(recv2.recv().unwrap());
         assert_eq!(&buf[..len], &data[..len]);
 
         drop(disk_scheduler);

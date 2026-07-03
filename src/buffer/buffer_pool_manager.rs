@@ -10,51 +10,35 @@
 //
 //===----------------------------------------------------------------------===//
 
-use std::collections::{HashMap, VecDeque};
-use std::sync::atomic::AtomicI32;
-use std::sync::{Arc, Mutex};
+use std::collections::HashMap;
+use std::ops::Deref;
+use std::sync::atomic::{AtomicI32, Ordering};
+use std::sync::{Arc, Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use crate::buffer::frame_header::FrameHeader;
 use crate::buffer::lru_k_replacer::LRUKReplacer;
 use crate::buffer::lru_k_replacer::AccessType;
-use crate::common::{FrameId, PageId};
+use crate::common::{FrameId, INVALID_PAGE_ID, PageId};
 use crate::storage::disk::disk_scheduler::{DiskManager, DiskScheduler};
 use crate::storage::page::page_guard::{ReadPageGuard, WritePageGuard};
 
-/// The `BufferPoolManager` is responsible for moving physical pages of data
-/// back and forth from buffers in main memory to persistent storage. It also
-/// behaves as a cache, keeping frequently used pages in memory for faster
-/// access, and evicting unused or cold pages back out to storage.
-///
-/// The buffer pool manager owns the set of frames it manages, the page table
-/// that maps page IDs to frame IDs, a free frame list, and the LRU-K replacer
-/// for eviction decisions. All internal state is protected by an `Arc<Mutex<>>`.
 #[allow(dead_code)]
-struct BufferPoolManagerCore {
-    /// The number of frames in the buffer pool.
-    num_frames: usize,
-
-    /// The next page ID to be allocated. Initialized to 0 and incremented
-    /// atomically on each `new_page()` call.
-    next_page_id: AtomicI32,
-
-    /// The frame headers of the frames that this buffer pool manages.
-    /// Each frame is wrapped in `Arc<Mutex<FrameHeader>>` so it can be
-    /// shared with page guards for safe concurrent access.
-    frames: Vec<Arc<Mutex<FrameHeader>>>,
-
+struct BufferPoolManagerPages {
     /// The page table that keeps track of the mapping between pages and
     /// buffer pool frames.
     page_table: HashMap<PageId, FrameId>,
 
     /// A list of free frames that do not hold any page's data.
-    free_frames: VecDeque<FrameId>,
+    free_frames: Vec<FrameId>,
 
-    /// The replacer to find unpinned / candidate pages for eviction.
-    replacer: LRUKReplacer,
+    /// A list of free pages that are deleted
+    free_pages: Vec<PageId>,
 
-    /// The disk scheduler for reading and writing pages to persistent storage.
-    disk_scheduler: DiskScheduler,
+}
+
+struct PinnedFrame {
+    frame: RwLock<FrameHeader>,
+    pin_count: Mutex<usize>,
 }
 
 /// A thread-safe, shareable handle to the buffer pool manager.
@@ -63,7 +47,23 @@ struct BufferPoolManagerCore {
 /// shared between threads. The mutex guards all internal state
 /// (page table, free list, replacer, etc.).
 pub struct BufferPoolManager {
-    core: Mutex<BufferPoolManagerCore>
+    /// The number of frames in the buffer pool.
+    num_frames: usize,
+
+    /// The next page ID to be allocated. Initialized to 0 and incremented
+    /// atomically on each `new_page()` call.
+    next_page_id: AtomicI32,
+
+    frames: Vec<PinnedFrame>,
+
+    /// The replacer to find unpinned / candidate pages for eviction.
+    /// The replacer is shared in all page guards.
+    replacer: LRUKReplacer,
+
+    /// The disk scheduler for reading and writing pages to persistent storage.
+    disk_scheduler: DiskScheduler,
+
+    pages: Mutex<BufferPoolManagerPages>,
 }
 
 impl BufferPoolManager {
@@ -81,33 +81,35 @@ impl BufferPoolManager {
         let disk_scheduler = DiskScheduler::new(disk_manager);
 
         let mut frames = Vec::with_capacity(num_frames);
-        let mut free_frames = VecDeque::with_capacity(num_frames);
+        let mut free_frames = Vec::with_capacity(num_frames);
 
         // Allocate all in-memory frames up front and initialize the free
         // frame list with all possible frame IDs.
         for i in 0..num_frames {
-            frames.push(Arc::new(Mutex::new(FrameHeader::new(i as FrameId))));
-            free_frames.push_back(i as FrameId);
+            frames.push(PinnedFrame {
+                frame: RwLock::new(FrameHeader::new(i as FrameId)),
+                pin_count: Mutex::new(0),
+            });
+            free_frames.push(i as FrameId);
         }
 
         BufferPoolManager {
-            core: Mutex::new(BufferPoolManagerCore {
-                num_frames,
-                next_page_id: AtomicI32::new(0),
-                frames,
-                page_table: HashMap::with_capacity(num_frames),
+            num_frames,
+            next_page_id: AtomicI32::new(0),
+            frames,
+            replacer,
+            disk_scheduler,
+            pages: Mutex::new(BufferPoolManagerPages {
+                page_table: HashMap::new(),
                 free_frames,
-                replacer,
-                disk_scheduler,
+                free_pages: Vec::new(),
             })
         }
     }
 
     /// Returns the number of frames that this buffer pool manages.
     pub fn size(&self) -> usize {
-        let guard = self.core.lock()
-            .expect("Unexpected error of mutex locking");
-        guard.num_frames
+        self.num_frames
     }
 
     /// Allocates a new page on disk.
@@ -116,7 +118,15 @@ impl BufferPoolManager {
     ///
     /// TODO(P1): Add implementation.
     pub fn new_page(&self) -> PageId {
-        todo!("TODO(P1): Add implementation.")
+        let mut pages = self.pages.lock().expect("");
+        match pages.free_pages.pop() {
+            Some(p) => p,
+            None => {
+                let p = self.next_page_id.fetch_add(1, Ordering::Relaxed);
+                self.disk_scheduler.increase_disk_space(p as usize + 1);
+                p
+            }
+        }
     }
 
     /// Removes a page from the database, both on disk and in memory.
@@ -128,8 +138,17 @@ impl BufferPoolManager {
     /// * `page_id` - the ID of the page to delete.
     ///
     /// TODO(P1): Add implementation.
-    pub fn delete_page(&self, _page_id: PageId) -> bool {
-        todo!("TODO(P1): Add implementation.")
+    pub fn delete_page(&self, page_id: PageId) -> bool {
+        let mut pages = self.pages.lock().expect("");
+        if let Some(frame_id) = pages.page_table.remove(&page_id) {
+            let pc_guard = self.frames[frame_id as usize].pin_count.lock().unwrap();
+            if *pc_guard > 0 {
+                return false;
+            }
+        }
+        self.disk_scheduler.deallocate_page(page_id);
+        pages.free_pages.push(page_id);
+        true
     }
 
     /// Acquires an optional write-locked guard over a page of data.
@@ -144,10 +163,11 @@ impl BufferPoolManager {
     pub fn checked_write_page(
         &self,
         page_id: PageId,
-        _access_type: AccessType,
+        access_type: AccessType,
     ) -> Option<WritePageGuard<'_>> {
-        let _ = page_id;
-        todo!("TODO(P1): Add implementation.")
+        let (frame_id, frame) = self.get_frame::<_, RwLockWriteGuard<'_, FrameHeader>>(page_id, access_type, true, |lock| lock.write().unwrap())?;
+        let pin_count = &self.frames[frame_id as usize].pin_count;
+        Some(WritePageGuard { page_id, frame, pin_count, replacer: self.replacer.clone() })
     }
 
     /// Acquires an optional read-locked guard over a page of data.
@@ -162,10 +182,11 @@ impl BufferPoolManager {
     pub fn checked_read_page(
         &self,
         page_id: PageId,
-        _access_type: AccessType,
+        access_type: AccessType,
     ) -> Option<ReadPageGuard<'_>> {
-        let _ = page_id;
-        todo!("TODO(P1): Add implementation.")
+        let (frame_id, frame) = self.get_frame::<_, RwLockReadGuard<'_, FrameHeader>>(page_id, access_type, false, |lock| lock.read().unwrap())?;
+        let pin_count = &self.frames[frame_id as usize].pin_count;
+        Some(ReadPageGuard { page_id, frame, pin_count, replacer: self.replacer.clone() })
     }
 
     /// A wrapper around `checked_write_page` that aborts if the page could
@@ -202,8 +223,12 @@ impl BufferPoolManager {
     ///
     /// TODO(P1): Add implementation.
     pub fn flush_page(&self, page_id: PageId) -> bool {
-        let _ = page_id;
-        todo!("TODO(P1): Add implementation.")
+        let fid_opt = self.pages.lock().unwrap().page_table.get(&page_id).cloned();
+        if let Some(fid) = fid_opt {
+            let frame = self.frames[fid as usize].frame.read().unwrap();
+            self.disk_scheduler.schedule_write(page_id, frame.data.as_ptr()).recv().unwrap();
+            true
+        } else { false }
     }
 
     /// Flushes all page data that is in memory to disk.
@@ -213,7 +238,15 @@ impl BufferPoolManager {
     ///
     /// TODO(P1): Add implementation.
     pub fn flush_all_pages(&self) {
-        todo!("TODO(P1): Add implementation.")
+        let pages = self.pages.lock().unwrap();
+        let recvs = pages.page_table.iter()
+            .map(|(&pid, &fid)| {
+                let frame = self.frames[fid as usize].frame.read().unwrap();
+                self.disk_scheduler.schedule_write(pid, frame.data.as_ptr())
+            })
+            .collect::<Vec<_>>();
+        recvs.iter()
+            .for_each(|r| {r.recv().unwrap();});
     }
 
     /// Retrieves the pin count of a page.
@@ -224,8 +257,52 @@ impl BufferPoolManager {
     ///
     /// TODO(P1): Add implementation.
     pub fn get_pin_count(&self, page_id: PageId) -> Option<usize> {
-        let _ = page_id;
-        todo!("TODO(P1): Add implementation.")
+        let fid = {
+            let pages = self.pages.lock().unwrap();
+            pages.page_table.get(&page_id).cloned()?
+        };
+        Some(*self.frames[fid as usize].pin_count.lock().unwrap())
+    }
+
+    fn get_frame<'a, F, R>(&'a self, page_id: PageId, access_type: AccessType, dirty_touch: bool, lock_fn: F) -> Option<(FrameId, R)> 
+        where F: FnOnce(&'a RwLock<FrameHeader>) -> R,
+              R: 'a + Deref<Target = FrameHeader>
+    {
+        let frame_id = self.get_frame_id_by_page_id(page_id, access_type, dirty_touch)?;
+        let frame_guard = lock_fn(&self.frames[frame_id as usize].frame);
+        let mut pc_guard = self.frames[frame_id as usize].pin_count.lock().unwrap();
+        *pc_guard += 1;
+        if *pc_guard == 1 {
+            self.replacer.set_evictable(frame_id, false);
+        }
+        Some((frame_id, frame_guard))
+    }
+
+    fn get_frame_id_by_page_id(&self, page_id: PageId, access_type: AccessType, dirty_touch: bool) -> Option<FrameId> {
+        let mut pages = self.pages.lock().unwrap();
+        if let Some(&frame_id) = pages.page_table.get(&page_id) {
+            return Some(frame_id);
+        }
+
+        let frame_id = pages.free_frames.pop()
+            .or_else(|| self.replacer.evict())?;
+
+        {
+            let mut frame = self.frames[frame_id as usize].frame.write().unwrap();
+            if frame.is_dirty {
+                assert_ne!(frame.page_id, INVALID_PAGE_ID);
+                self.disk_scheduler.schedule_write(frame.page_id, frame.data.as_ptr()).recv().unwrap();
+            }
+            pages.page_table.remove(&frame.page_id);
+
+            self.disk_scheduler.schedule_read(page_id, frame.data.as_mut_ptr()).recv().unwrap();
+            frame.is_dirty = dirty_touch;
+            frame.page_id = page_id;
+        }
+        pages.page_table.insert(page_id, frame_id);
+        self.replacer.record_access(frame_id, access_type);
+        
+        Some(frame_id)
     }
 }
 
@@ -409,12 +486,12 @@ mod buffer_pool_manager_tests {
             let page0_read = bpm
                 .checked_read_page(page_id0, AccessType::Unknown)
                 .expect("page0 should be readable");
-            assert_eq!(&page0_read.as_slice()[..13], b"page0updated");
+            assert_eq!(&page0_read.as_slice()[..12], b"page0updated");
 
             let page1_read = bpm
                 .checked_read_page(page_id1, AccessType::Unknown)
                 .expect("page1 should be readable");
-            assert_eq!(&page1_read.as_slice()[..13], b"page1updated");
+            assert_eq!(&page1_read.as_slice()[..12], b"page1updated");
 
             assert_eq!(Some(1), bpm.get_pin_count(page_id0));
             assert_eq!(Some(1), bpm.get_pin_count(page_id1));

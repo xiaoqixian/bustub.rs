@@ -10,6 +10,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+
 use crate::common::{BUSTUB_PAGE_SIZE, INVALID_PAGE_ID, PageId};
 use crate::common::FrameId;
 
@@ -30,13 +31,9 @@ use crate::common::FrameId;
 /// be easily detected by address sanitizer. If frames were contiguous, it
 /// would be very easy to cast a page's data pointer to a larger type and
 /// accidentally overwrite adjacent pages.
-#[allow(dead_code)]
 pub struct FrameHeader {
     /// The frame ID / index of the frame this header represents.
     pub(crate) frame_id: FrameId,
-
-    /// The number of pins on this frame keeping the page in memory.
-    pub(crate) pin_count: usize,
 
     /// The dirty flag — set to `true` when the page has been modified and
     /// needs to be flushed to disk.
@@ -59,7 +56,6 @@ impl FrameHeader {
     pub fn new(frame_id: FrameId) -> Self {
         let mut this = FrameHeader {
             frame_id,
-            pin_count: 0,
             is_dirty: false,
             page_id: INVALID_PAGE_ID,
             data: vec![0u8; BUSTUB_PAGE_SIZE],
@@ -73,7 +69,6 @@ impl FrameHeader {
     /// to `INVALID_PAGE_ID`.
     pub(crate) fn reset(&mut self) {
         self.data.fill(0);
-        self.pin_count = 0;
         self.is_dirty = false;
         self.page_id = INVALID_PAGE_ID;
     }
