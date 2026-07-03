@@ -125,6 +125,7 @@ impl<'cat> Binder<'cat> {
         match stmt {
             Statement::Query(query) => self.bind_query(query.as_ref()).map(|s| BoundStatement::Select(s)),
             Statement::CreateTable(ct) => self.bind_create(ct).map(|ct| BoundStatement::Create(ct)),
+            Statement::Insert(insert) => self.bind_insert(insert).map(|st| BoundStatement::Insert(st)),
             _ => Err(BindError::UnsupportedStatement(format!("{}", stmt)))
         }
     }
@@ -347,17 +348,13 @@ impl<'cat> Binder<'cat> {
             return Err(BindError::UnsupportedYetSQL("Select with LIMIT is not supported yet.".to_owned()));
         }
         
-        let sel = match query.body.as_ref() {
-            sql::SetExpr::Select(sel) => sel.as_ref(),
-            _ => return Err(BindError::UnsupportedYetSQL("Nested select is not supported yet.".to_owned()))
+        let (table, select_list) = match query.body.as_ref() {
+            sql::SetExpr::Select(sel) => {
+                (Some(self.bind_from(&sel.from)?), self.bind_select_projection(&sel.projection)?)
+            },
+            x => return Err(BindError::UnsupportedYetSQL(format!("unsupoorted query body: {:?}", x)))
         };
-        
-        let table = self.bind_from(&sel.from)?;
-        self.push_table_ref(table);
 
-        let select_list = self.bind_select_projection(&sel.projection)?;
-
-        let table = self.pop_table_ref().unwrap();
         Ok(SelectStatement {
             table,
             select_list,
@@ -627,5 +624,12 @@ impl<'cat> Binder<'cat> {
         let a_iter = a.chars().flat_map(|c| c.to_lowercase());
         let b_iter = b.chars().flat_map(|c| c.to_lowercase());
         a_iter.eq(b_iter)
+    }
+}
+
+// bind insert
+impl<'a> Binder<'a> {
+    fn bind_insert(&mut self, _insert: &sql::Insert) -> Result<InsertStatement, BindError> {
+        todo!("")
     }
 }
