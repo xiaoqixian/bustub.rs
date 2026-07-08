@@ -120,7 +120,7 @@ impl fmt::Display for CreateStatement {
 #[derive(Debug)]
 pub struct SelectStatement {
     /// Bound FROM clause.
-    pub table: Option<TableRef>,
+    pub table: TableRef,
     /// Bound SELECT list.
     pub select_list: Vec<BoundExpression>,
     /// Bound WHERE clause.
@@ -143,10 +143,7 @@ pub struct SelectStatement {
 
 impl fmt::Display for SelectStatement {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.table.as_ref() {
-            Some(t) => write!(f, "SelectStatement {{ table={} }}", t),
-            None => write!(f, "SelectStatement {{ table=None }}")
-        }
+        write!(f, "SelectStatement {{ table={} }}", self.table)
     }
 }
 

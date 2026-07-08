@@ -1,6 +1,8 @@
 mod statement;
 mod expression;
 mod table_ref;
+mod bind_insert;
+mod bind_select;
 
 use std::cell::Cell;
 use std::fmt;
@@ -12,7 +14,7 @@ pub use table_ref::*;
 
 use crate::{
     catalog::{Catalog, Column, IndexType, Schema},
-    sql_type::TypeId,
+    sql_type::{TypeId, Value},
 };
 
 //===----------------------------------------------------------------------===//
@@ -96,6 +98,7 @@ pub struct Binder<'cat> {
     all_table_ref: Vec<TableRef>
 }
 
+#[allow(dead_code)]
 impl<'cat> Binder<'cat> {
     pub fn new(catalog: &'cat Catalog) -> Self {
         Self {
@@ -350,8 +353,11 @@ impl<'cat> Binder<'cat> {
         
         let (table, select_list) = match query.body.as_ref() {
             sql::SetExpr::Select(sel) => {
-                (Some(self.bind_from(&sel.from)?), self.bind_select_projection(&sel.projection)?)
+                (self.bind_from(&sel.from)?, self.bind_select_projection(&sel.projection)?)
             },
+            sql::SetExpr::Values(values) => {
+                (self.bind_values_list(values)?, vec![])
+            }
             x => return Err(BindError::UnsupportedYetSQL(format!("unsupoorted query body: {:?}", x)))
         };
 
@@ -400,7 +406,21 @@ impl<'cat> Binder<'cat> {
                 let op = BoundBinaryOperator::from(op)?;
                 Ok(BoundExpression::BoundBinaryOp(BoundBinaryOp {larg, op, rarg}))
             },
+            Expr::Value(value_with_span) => self.bind_value(&value_with_span.value).map(|c| BoundExpression::BoundConstant(c)),
             _ => Err(BindError::UnsupportedExpr(format!("{:?}", expr)))
+        }
+    }
+
+    pub fn bind_value(&self, value: &sql::Value) -> Result<BoundConstant, BindError> {
+        match value {
+            sql::Value::Number(num_str, false) => {
+                let num = num_str.parse::<i32>().map_err(|_| BindError::Message(format!("invalid number literal: {}", num_str)))?;
+                let val = Value::from_i32(num);
+                Ok(BoundConstant { val })
+            },
+            sql::Value::SingleQuotedString(s) => Ok(BoundConstant { val: Value::from_str(s.as_str()) }),
+            sql::Value::Null => Ok(BoundConstant { val: Value::null(TypeId::Integer) }),
+            _ => Err(BindError::Message(format!("unsupported value: {}", value)))
         }
     }
 
@@ -427,7 +447,7 @@ impl<'cat> Binder<'cat> {
 
     pub fn bind_table_ref(&self, table_with_joins: &sql::TableWithJoins) -> Result<TableRef, BindError> {
         let (table_name, table_alias) = Self::extract_table_fac(&table_with_joins.relation)?;
-        let base_table = self.bind_base_table_ref(table_name, table_alias)?;
+        let base_table = TableRef::BaseTableRef(self.bind_base_table_ref(table_name, table_alias)?);
         match table_with_joins.joins.len() {
             0 => Ok(base_table),
             _ => {
@@ -435,6 +455,10 @@ impl<'cat> Binder<'cat> {
                     .try_fold(base_table, |b, join| self.bind_table_join(b, join))
             }
         }
+    }
+
+    fn bind_values_list(&self, values: &sql::Values) -> Result<TableRef, BindError> {
+        bind_select::bind_values_list(&self, values)
     }
 
     fn bind_select_projection(&self, projection: &Vec<sql::SelectItem>) -> Result<Vec<BoundExpression>, BindError> {
@@ -502,16 +526,16 @@ impl<'cat> Binder<'cat> {
         }
     }
 
-    fn bind_base_table_ref(&self, table_name: String, table_alias: Option<String>) -> Result<TableRef, BindError> {
+    pub fn bind_base_table_ref(&self, table_name: String, table_alias: Option<String>) -> Result<BaseTableRef, BindError> {
         match self.catalog.get_table_by_name(&table_name).as_ref() {
             None => Err(BindError::TableNotFound(table_name)),
             Some(table_info) => Ok(
-                TableRef::BaseTableRef(BaseTableRef {
+                BaseTableRef {
                     table: table_name,
                     oid: table_info.oid,
                     alias: table_alias,
                     schema: table_info.schema.clone()
-                })
+                }
             )
         }
     }
@@ -576,7 +600,7 @@ impl<'cat> Binder<'cat> {
 
     fn bind_table_join(&self, l_table: TableRef, join: &sql::Join) -> Result<TableRef, BindError> {
         let (r_table_name, r_table_alias) = Self::extract_table_fac(&join.relation)?;
-        let r_table = Box::new(self.bind_base_table_ref(r_table_name, r_table_alias)?);
+        let r_table = Box::new(TableRef::BaseTableRef(self.bind_base_table_ref(r_table_name, r_table_alias)?));
         let (join_type, constraint) = match &join.join_operator {
             sql::JoinOperator::Left(c) => (JoinType::Left, c),
             sql::JoinOperator::Right(c) => (JoinType::Right, c),
@@ -629,7 +653,7 @@ impl<'cat> Binder<'cat> {
 
 // bind insert
 impl<'a> Binder<'a> {
-    fn bind_insert(&mut self, _insert: &sql::Insert) -> Result<InsertStatement, BindError> {
-        todo!("")
+    fn bind_insert(&mut self, insert: &sql::Insert) -> Result<InsertStatement, BindError> {
+        bind_insert::bind_insert(self, insert)
     }
 }
