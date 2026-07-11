@@ -1,8 +1,9 @@
-use crate::{binder::{BoundExpression, BoundStatement, SelectStatement, TableRef}, catalog::CatalogRef, common::errors::BustubError, execution::{expressions::AbstractExpression, plans::PlanNode}};
+use crate::{binder::{BoundExpression, BoundStatement, InsertStatement, SelectStatement, TableRef}, catalog::CatalogRef, common::errors::BustubError, execution::{expressions::AbstractExpression, plans::PlanNode}};
 
 mod plan_expression;
 mod plan_select;
 mod plan_table;
+mod plan_insert;
 
 struct PlannerContext {}
 
@@ -46,12 +47,17 @@ impl Planner {
     pub fn plan_query(&mut self, stmt: &BoundStatement) -> Result<PlanNode, BustubError> {
         match stmt {
             BoundStatement::Select(sel) => self.plan_select(sel),
-            _ => Err(BustubError::Message(format!("Unsupported statement type {}", stmt)))
+            BoundStatement::Insert(ins) => self.plan_insert(ins),
+            _ => Err(BustubError::Message(format!("Planner: unsupported statement type {}", stmt)))
         }
     }
 
     fn plan_select(&mut self, sel: &SelectStatement) -> Result<PlanNode, BustubError> {
         plan_select::plan_select(self, sel)
+    }
+
+    fn plan_insert(&mut self, ins: &InsertStatement) -> Result<PlanNode, BustubError> {
+        plan_insert::plan_insert(self, ins)
     }
 
     fn plan_expression(&mut self, expr: &BoundExpression, children: &[PlanNode]) -> Result<(String, AbstractExpression), BustubError> {
