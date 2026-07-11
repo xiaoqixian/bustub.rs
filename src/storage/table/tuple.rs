@@ -10,9 +10,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-use crate::catalog::Schema;
+use crate::catalog::{Column, Schema};
 use crate::common::rid::RID;
-use crate::sql_type::Value;
+use crate::sql_type::{TypeId, Value};
 
 /// Timestamp type used in tuple metadata.
 pub type TimeStamp = i64;
@@ -159,7 +159,7 @@ impl Tuple {
     }
 
     /// Generate a key tuple given schemas and key attributes.
-    pub fn key_from_tuple(
+    pub fn from_key(
         &self,
         schema: &Schema,
         key_schema: &Schema,
@@ -191,6 +191,11 @@ impl Tuple {
             }
         }
         format!("({})", parts.join(", "))
+    }
+
+    pub fn from_num(num: i32) -> Tuple {
+        let schema = Schema::new(vec![Column::new("", TypeId::Integer)]);
+        Tuple::new_with_values(vec![Value::from_i32(num)], &schema)
     }
 
     /// Get the starting storage address of a specific column's data.

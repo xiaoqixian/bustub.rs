@@ -29,8 +29,8 @@ use crate::{
 
 #[allow(dead_code)]
 pub struct BustubInstance {
-    pub(crate) bpm: Option<Arc<BufferPoolManager>>,
-    pub(crate) lock_manager: LockManager,
+    pub(crate) bpm: Arc<BufferPoolManager>,
+    pub(crate) lock_manager: Arc<LockManager>,
     pub(crate) txn_manager: TransactionManager,
     pub(crate) catalog: CatalogRef,
     curr_txn: Option<Arc<Transaction>>,
@@ -58,8 +58,8 @@ impl BustubInstance {
         let catalog = CatalogRef::new(Catalog::new(bpm.clone()));
 
         Ok(BustubInstance {
-            bpm: Some(bpm),
-            lock_manager: LockManager {},
+            bpm: bpm,
+            lock_manager: Arc::new(LockManager {}),
             txn_manager: TransactionManager::new(),
             catalog,
             curr_txn: None,
@@ -146,6 +146,7 @@ impl BustubInstance {
                 .bind_statement(sql_stmt)
                 .map_err(|e| format!("{:?}", e))?;
 
+            let mut is_delete = false;
             match &stmt {
                 BoundStatement::Create(create) => { self.handle_create_statement(txn, create, writer)?; continue; },
                 BoundStatement::Index(index) => { self.handle_index_statement(txn, index, writer)?; continue; },
@@ -153,6 +154,7 @@ impl BustubInstance {
                 BoundStatement::VariableShow(vs) => { self.handle_variable_show_statement(txn, vs, writer)?; continue; },
                 BoundStatement::Explain(explain) => { self.handle_explain_statement(txn, explain, writer)?; continue; },
                 BoundStatement::Transaction(txn_stmt) => { self.handle_txn_statement(txn, txn_stmt, writer)?; continue; },
+                BoundStatement::Update(_) | BoundStatement::Delete(_) => { is_delete = true; },
                 _ => {}
             }
 
@@ -162,7 +164,13 @@ impl BustubInstance {
             let optimizer = Optimizer::new(&self.catalog, false);
             let plan = optimizer.optimize(plan);
 
-            let exec_ctx = ExecutorContext {};
+            let exec_ctx = ExecutorContext {
+                txn: self.curr_txn.clone(),
+                bpm: self.bpm.clone(),
+                catalog: self.catalog.clone(),
+                lock_mgr: self.lock_manager.clone(),
+                is_delete,
+            };
             let result_set = exec_engine.execute(&plan, &exec_ctx)?;
             let output_schema = plan.output_schema_ref();
 

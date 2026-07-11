@@ -154,10 +154,11 @@ impl TableHeap {
     pub fn new(bpm: Arc<BufferPoolManager>) -> Self {
         let first_page_id = bpm.new_page();
 
-        let mut guard = bpm.write_page(first_page_id, AccessType::Unknown);
-        let first_page = guard.as_mut_ref::<TablePage>();
-        first_page.init();
-        drop(guard);
+        {
+            let mut guard = bpm.write_page(first_page_id, AccessType::Unknown);
+            let first_page = guard.as_mut_ref::<TablePage>();
+            first_page.init();
+        }
 
         TableHeap {
             bpm,
@@ -263,7 +264,6 @@ impl TableHeap {
             self.last_page_id.store(next_page_id, Ordering::Relaxed);
             last_page_id = next_page_id;
 
-            drop(page_guard);
             page_guard = next_page_guard;
         }
 
@@ -276,9 +276,6 @@ impl TableHeap {
         // Row-level locking is disabled by default (see `DISABLE_LOCK_MANAGER`
         // in the C++ config.h). The `LockManager` implementation in the Rust
         // project is a stub, so we skip the actual lock call.
-
-        // Drop the page guard before returning.
-        drop(page_guard);
 
         // The latch guard is dropped here, releasing the table lock.
         Some(RID::from_parts(last_page_id, slot_id as u32))
@@ -321,19 +318,14 @@ impl TableHeap {
     /// update executor is implemented as a pipeline breaker, `MakeIterator`
     /// and `MakeEagerIterator` should produce identical results.
     pub fn make_iterator(&self) -> TableIterator<'_> {
+        // The latch is held while reading the page metadata so that a
+        // concurrent insert cannot change the page we are examining.
         // Acquire the latch to read `last_page_id` consistently.
         let _latch_guard = self.latch.lock().unwrap();
         let last_page_id = self.last_page_id.load(Ordering::Relaxed);
-
-        // The latch is held while reading the page metadata so that a
-        // concurrent insert cannot change the page we are examining.
         let page_guard = self.bpm.read_page(last_page_id, AccessType::Unknown);
         let page = page_guard.as_ref::<TablePage>();
         let num_tuples = page.get_num_tuples();
-        drop(page_guard);
-
-        // Release the latch before creating the iterator.
-        drop(_latch_guard);
 
         TableIterator::new(
             self,
